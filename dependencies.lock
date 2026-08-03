@@ -1,0 +1,81 @@
+dependencies:
+  espressif/esp-zboss-lib:
+    component_hash: 321883d142421f65009972408287441794250057668a11abbdfd8bec77c3309a
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.6.4
+  espressif/esp-zigbee-lib:
+    component_hash: fa0812e6743e2a7d999af9f44ccdcea17ccb1e80f98d6b2956f44687503a88fd
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.6.8
+  espressif/fb_gfx:
+    component_hash: b5f6592c748d685470bd740e5d5d38df57ea6424584bee48e9c4b43bdc32c7fa
+    dependencies: []
+    source:
+      git: https://github.com/espressif/esp32-arduino-lib-builder.git
+      path: components/fb_gfx
+      type: git
+    version: ee57070cc8571c488a64b8ef028684acdc6ff5e2
+  espressif/lan867x:
+    component_hash: 88bcd9834f0ddd780c1dbed3b9135d03edd00e76dadfd70b91410a524cc5e85a
+    dependencies:
+    - name: espressif/lan86xx_common
+      registry_url: https://components.espressif.com
+      require: private
+      version: '*'
+    - name: idf
+      require: private
+      version: '>=5.3'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    targets:
+    - esp32
+    - esp32p4
+    - esp32s31
+    version: 2.1.0
+  espressif/lan86xx_common:
+    component_hash: 1045dc16e9eaa23c8f94ebd012e4ccc9087e85323c39f870b116391f27196914
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.2'
+    source:
+      registry_url: https://components.espressif.com
+      type: service
+    version: 1.0.1
+  idf:
+    source:
+      type: idf
+    version: 5.5.1
+  joltwallet/littlefs:
+    component_hash: 3af20a3d75c49db9dc2286fd50862c34055c9f578419ad1f2bf7ed3ed01391fe
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.22.3
+direct_dependencies:
+- espressif/esp-zboss-lib
+- espressif/esp-zigbee-lib
+- espressif/fb_gfx
+- espressif/lan867x
+- idf
+- joltwallet/littlefs
+manifest_hash: e7cc2a54ba936da3b51a1c6a8a01a294e4c84328447d628b3db7c1e34e3634d9
+target: esp32
+version: 2.0.0
