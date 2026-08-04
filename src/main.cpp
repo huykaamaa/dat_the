@@ -1,6 +1,7 @@
 #include "globals.h"
-#include "audio.h"
+#include "mqtt.h"
 #include "web.h"
+#include "audio.h"
 #include "html.h"
 
 //================ NETWORKING ================
@@ -8,20 +9,20 @@
 const char *apSSID = "ESP32_Player";
 const char *apPASS = "12345678";
 
-String wifiSSID;
-String wifiPASS;
+char wifiSSID[32] = "";
+char wifiPASS[64] = "";
 
 // F19-style static-IP fallback (ported from phòng Cân Tim): same 192.168.99.0/24 as this
 // room's old OSC target default (192.168.99.187) and Cân Tim's own defaults (.199 MQTT
 // broker .225) - .198 is a judgment call to avoid colliding with those, not a confirmed
 // venue-network fact.
-String staticIP = "192.168.99.198";
-String staticGW = "192.168.99.1";
-String staticMask = "255.255.255.0";
+char staticIP[16]   = "192.168.99.198";
+char staticGW[16]   = "192.168.99.1";
+char staticMask[16] = "255.255.255.0";
 
 // F6-style Basic Auth (ported from phòng Cân Tim), gates /save and /test_relay.
-String authUser = "admin";
-String authPass = "admin";
+char authUser[32] = "admin";
+char authPass[32] = "admin";
 
 // Diagnostic AP: broadcasts the STA's IP as an open AP SSID for a few minutes after connect
 // so an operator can read it off a phone's WiFi list instead of needing Serial (Cân Tim).
@@ -31,6 +32,33 @@ unsigned long diagApStartMs = 0;
 
 WebServer server(80);
 Preferences prefs;
+WiFiUDP oscUdp;
+
+// MQTT - ported tu gia_sach (ban goc truoc khi rut sensor), xem mqtt.cpp
+esp_mqtt_client_handle_t mqtt = nullptr;
+bool mqttConnected = false;
+bool mqttEnabled = true;
+char mqttServer[32]       = "192.168.99.225";
+uint16_t mqttPort         = 1883;
+char mqttUser[32]         = "";
+// Mac dinh RONG - khong hardcode mat khau that vao source (source nam trong git). Nhap 1 lan
+// qua Web UI, sau do no nam trong NVS va song qua cac lan nap firmware moi.
+char mqttPass[32]         = "";
+char mqttTopic[64]        = "datthe/vitri"; // moi vi tri se publish vao "<mqttTopic>/<1..6>"
+char mqttFullValue[32]    = "FULL";
+char mqttMissingValue[32] = "MISSING";
+
+// OSC
+bool oscEnabled = false;
+char oscIp[32]             = "192.168.99.100";
+uint16_t oscPort           = 9000;
+char oscAddressFull[64]    = "/composition/layers/1/clips/{id}/connect";
+char oscAddressMissing[64] = "/composition/layers/1/clips/{id}/disconnect";
+int oscValueFull     = 1;
+int oscValueMissing  = 1;
+
+// Heartbeat/resync - xem giai thich trong globals.h. Mac dinh 60s.
+unsigned long heartbeatInterval = 60000; // ms, 0 = tat
 
 //================ SENSOR / RELAY / TRIGGER ================
 
@@ -42,12 +70,28 @@ bool relayState[SENSOR_NUM] = {0};
 bool relayOutput[SENSOR_NUM] = {0};
 static bool lastRead[SENSOR_NUM] = {0};
 static unsigned long relayChangeTime[SENSOR_NUM] = {0};
+static bool lastSentState[SENSOR_NUM] = {false}; // trang thai da bao MQTT/OSC lan gan nhat
 
 // Set by triggerRelayTest() (Web UI "Test Relay" button), read by checkSensors(): forces
 // that relay ON until this timestamp regardless of live sensor state, so an installer can
 // verify wiring without needing to physically trigger the sensor.
+//
+// relayTestUntil CHI co y nghia khi relayTestPending = true (ported fix tu gia_sach). Truoc
+// day chi co relayTestUntil voi sentinel 0 nghia la "khong test", nhung phep so sanh truc
+// tiep "millis() < relayTestUntil[i]" lai ra TRUE trong 1 khoang dai khi millis() vuot 2^31
+// (~24.9 ngay uptime) - moi relay chua tung bam Test se bi ep ON suot khoang do. Co pending
+// tach bach "co moc hop le khong" khoi "moc do da qua chua", nen khong con phu thuoc vao gia
+// tri sentinel nao ca.
 static unsigned long relayTestUntil[SENSOR_NUM] = {0};
+static bool relayTestPending[SENSOR_NUM] = {false};
 static const unsigned long RELAY_TEST_PULSE_MS = 2000;
+
+static bool relayTestActive(int id) {
+  if (!relayTestPending[id]) return false;
+  if ((long)(relayTestUntil[id] - millis()) > 0) return true;
+  relayTestPending[id] = false; // het xung, don co lai
+  return false;
+}
 
 uint32_t debounceTime = 500;   // ms
 uint32_t debounceTimeRelay = 500;   // ms
@@ -64,10 +108,13 @@ void triggerRelayTest(int id)
     return;
 
   relayTestUntil[id] = millis() + RELAY_TEST_PULSE_MS;
+  relayTestPending[id] = true;
 }
 
 // Per-loop sensor read -> relay drive -> AND/OR trigger -> play/stop music. Unchanged logic
-// from the original monolithic loop(), just extracted into its own function.
+// from the original monolithic loop(), just extracted into its own function. MQTT/OSC
+// per-position reporting (ported tu gia_sach) them vao CUOI vong for, khong dung gi vao
+// AND/OR trigger o tren - la 1 kenh bao cao song song, doc lap voi play/stop nhac.
 static void checkSensors()
 {
   bool trigger = triggerOR ? false : true;
@@ -88,7 +135,7 @@ static void checkSensors()
     // unticked sensor's relay stays off regardless of the raw GPIO reading. The manual
     // "Test Relay" pulse still overrides this (installer may want to test wiring on a
     // channel that isn't wired to a card yet).
-    bool testActive = millis() < relayTestUntil[i];
+    bool testActive = relayTestActive(i);
     relayOutput[i] = (relayState[i] && sensorEnable[i]) || testActive;
     digitalWrite(relayPins[i], relayOutput[i] ? RELAY_ON : RELAY_OFF);
 
@@ -97,6 +144,15 @@ static void checkSensors()
             trigger |= gpioDetect;
         else
             trigger &= gpioDetect;
+    }
+
+    // Bao MQTT/OSC khi trang thai THUC TE (co tinh enable, KHONG tinh test-pulse) doi - tuc
+    // la ca khi sensor doi trang thai LAN khi checkbox Enable vua duoc tick/bo tick tren web,
+    // de nguoi nhan khong bi ket o cue cu sau khi bat/tat 1 vi tri.
+    bool effectiveState = relayState[i] && sensorEnable[i];
+    if (effectiveState != lastSentState[i]) {
+      lastSentState[i] = effectiveState;
+      triggerSensor(i, effectiveState);
     }
   }
 
@@ -118,13 +174,23 @@ static void checkSensors()
   }
 }
 
+// Gui lai trang thai HIEN TAI (khong tinh test-pulse) cua ca 6 vi tri qua MQTT/OSC, dung
+// nguyen topic/dia chi/gia tri nhu binh thuong - khong phai message rieng biet, chi la
+// "nhac lai" cue gan nhat. Dung cho heartbeat dinh ky va cho buoc ket thuc chuoi Test trong
+// web.cpp.
+void resyncAllPositions() {
+  for (int i = 0; i < SENSOR_NUM; i++) {
+    triggerSensor(i, lastSentState[i]);
+  }
+}
+
 // Single connection attempt. useStatic=false lets DHCP assign the IP (normal path);
 // useStatic=true forces WiFi.config() with the saved fallback IP/gateway/mask first, for
 // when DHCP itself isn't answering (see connectWiFi() below) - same STA credentials either
 // way, only the IP assignment differs.
 static bool connectWiFiAttempt(bool useStatic)
 {
-    if (wifiSSID.length() == 0)
+    if (strlen(wifiSSID) == 0)
         return false;
 
     WiFi.disconnect(true, false);
@@ -142,7 +208,7 @@ static bool connectWiFiAttempt(bool useStatic)
     }
 
     WiFi.mode(WIFI_STA);
-    WiFi.begin(wifiSSID.c_str(), wifiPASS.c_str());
+    WiFi.begin(wifiSSID, wifiPASS);
 
     Serial.print("Connecting");
 
@@ -225,24 +291,8 @@ void startAP()
 
 void setup() {
   Serial.begin(115200);
-  prefs.begin("player", false);
 
-  for (int i = 0; i < SENSOR_NUM; i++) {
-      sensorEnable[i] = prefs.getBool(("sen" + String(i)).c_str(), true);
-  }
-  triggerOR = prefs.getBool("triggerOR", false);
-  wifiSSID = prefs.getString("ssid", "");
-  wifiPASS = prefs.getString("pass", "");
-  staticIP = prefs.getString("static_ip", "192.168.99.198");
-  staticGW = prefs.getString("static_gw", "192.168.99.1");
-  staticMask = prefs.getString("static_mask", "255.255.255.0");
-  authUser = prefs.getString("auth_user", "admin");
-  authPass = prefs.getString("auth_pass", "admin");
-
-  if (authUser == "admin" && authPass == "admin")
-  {
-      Serial.println("AUTH: using default admin credentials (admin/admin) for /save and /test_relay - change via Web UI Admin Auth panel");
-  }
+  loadConfig();
 
   for (int i = 0; i < SENSOR_NUM; i++) {
     pinMode(sensorPins[i], INPUT_PULLUP);
@@ -263,8 +313,8 @@ void setup() {
   Serial.println(WiFi.softAPIP());
 
   setupWeb();
-  debounceTime = prefs.getUInt("debounce", 500);
-  debounceTimeRelay = prefs.getUInt("debounceRelay", 500);
+  oscUdp.begin(9000);
+  mqttInit();
 
   audioInit();
 
@@ -286,4 +336,12 @@ void loop() {
   server.handleClient();
 
   audioUpdate();
+
+  updateTestSequence();
+
+  static unsigned long lastHeartbeatMs = millis();
+  if (heartbeatInterval > 0 && (millis() - lastHeartbeatMs) >= heartbeatInterval) {
+    lastHeartbeatMs = millis();
+    resyncAllPositions();
+  }
 }

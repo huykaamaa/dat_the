@@ -100,6 +100,7 @@ void handleRoot()
   html += "<div class='tabs'>";
   html += "<button type='button' id='btn-general' class='tab-btn active' onclick=\"showTab('general')\">Cấu hình</button>";
   html += "<button type='button' id='btn-network' class='tab-btn' onclick=\"showTab('network')\">Mạng (WiFi)</button>";
+  html += "<button type='button' id='btn-iot' class='tab-btn' onclick=\"showTab('iot')\">MQTT/OSC</button>";
   html += "</div>";
 
   // Empty form living outside #cfgForm - the per-sensor "Test Relay" buttons below target
@@ -209,8 +210,79 @@ void handleRoot()
 
   html += "</div>"; // end tab-network
 
+  //================ MQTT / OSC TAB (ported tu gia_sach ban goc, moi vi tri 1 topic/dia chi rieng) ================
+
+  html += "<div id='tab-iot' class='tab-content'>";
+
+  html += "<div class='panel'>";
+  html += "<h3>MQTT</h3>";
+  html += "<div class='single'><label><input type='checkbox' name='mqtt_enable' " + String(mqttEnabled ? "checked" : "") + "> Enable MQTT</label></div>";
+  html += "<div class='row'>";
+  html += "<div class='field'><label>IP</label><input name='mqtt_ip' value='" + htmlEscape(mqttServer) + "'></div>";
+  html += "<div class='field'><label>Port</label><input name='mqtt_port' value='" + String(mqttPort) + "'></div>";
+  html += "</div>";
+  html += "<div class='row'>";
+  html += "<div class='field'><label>User</label><input name='mqtt_user' value='" + htmlEscape(mqttUser) + "'></div>";
+  // KHONG do mqttPass ra HTML: trang "/" khong yeu cau dang nhap (de dashboard tu refresh
+  // duoc), nen "value=" o day dong nghia voi ai xem duoc trang cung doc duoc mat khau broker
+  // bang View Source. De trong = giu nguyen, giong cach auth_pass o tab Cau hinh.
+  html += "<div class='field'><label>Pass</label><input type='password' name='mqtt_pass' placeholder='(giữ nguyên nếu để trống)'></div>";
+  html += "</div>";
+  html += "<div class='single'><label>Topic gốc</label><input name='mqtt_topic' value='" + htmlEscape(mqttTopic) + "'></div>";
+  html += "<div class='row'>";
+  html += "<div class='field'><label>Giá trị khi CÓ</label><input name='mqtt_full' value='" + htmlEscape(mqttFullValue) + "'></div>";
+  html += "<div class='field'><label>Giá trị khi TRỐNG</label><input name='mqtt_missing' value='" + htmlEscape(mqttMissingValue) + "'></div>";
+  html += "</div>";
+  html += "<div class='note'>Mỗi vị trí (thẻ) tự publish vào &lt;topic gốc&gt;/&lt;1..6&gt;, payload chỉ là giá trị. Ví dụ topic gốc '" + htmlEscape(mqttTopic) + "' → vị trí 3 publish vào '" + htmlEscape(mqttTopic) + "/3'. Ô Pass để trống nghĩa là giữ nguyên mật khẩu đang dùng.</div>";
+  html += "</div>";
+
+  html += "<div class='panel'>";
+  html += "<h3>OSC</h3>";
+  html += "<div class='single'><label><input type='checkbox' name='osc_enable' " + String(oscEnabled ? "checked" : "") + "> Enable OSC</label></div>";
+  html += "<div class='row'>";
+  html += "<div class='field'><label>IP</label><input name='osc_ip' value='" + htmlEscape(oscIp) + "'></div>";
+  html += "<div class='field'><label>Port</label><input name='osc_port' value='" + String(oscPort) + "'></div>";
+  html += "</div>";
+  html += "<div class='row'>";
+  html += "<div class='field'><label>Địa chỉ khi CÓ</label><input name='osc_address_full' value='" + htmlEscape(oscAddressFull) + "' placeholder='.../clips/{id}/connect'></div>";
+  html += "<div class='field'><label>Giá trị khi CÓ</label><input name='osc_value_full' value='" + String(oscValueFull) + "'></div>";
+  html += "</div>";
+  html += "<div class='row'>";
+  html += "<div class='field'><label>Địa chỉ khi TRỐNG</label><input name='osc_address_missing' value='" + htmlEscape(oscAddressMissing) + "' placeholder='.../clips/{id}/disconnect'></div>";
+  html += "<div class='field'><label>Giá trị khi TRỐNG</label><input name='osc_value_missing' value='" + String(oscValueMissing) + "'></div>";
+  html += "</div>";
+  html += "<div class='note'>Viết {id} ở chỗ cần chèn số vị trí (1..6). CÓ và TRỐNG là 2 message OSC độc lập, mỗi cái 1 địa chỉ + 1 giá trị riêng.</div>";
+  html += "</div>";
+
+  html += "<div class='panel'>";
+  html += "<h3>Heartbeat (gửi lại trạng thái định kỳ)</h3>";
+  html += "<div class='single'><label>Chu kỳ (ms, 0 = tắt)</label><input name='heartbeat' value='" + String(heartbeatInterval) + "'></div>";
+  html += "<div class='note'>MQTT (QoS0) và OSC (UDP) đều không đảm bảo gửi tới nơi - nếu đúng lúc đổi trạng thái mà mạng chập chờn, bên nhận có thể bị lệch cho tới lần đổi kế tiếp. Heartbeat gửi lại trạng thái hiện tại của cả 6 vị trí theo chu kỳ này để tự đồng bộ lại.</div>";
+  html += "</div>";
+
+  html += "</div>"; // end tab-iot
+
   html += "<input class='btn btn-save' type='submit' value='SAVE SETTINGS'>";
   html += "</form>";
+
+  //================ TEST MQTT/OSC ================
+
+  html += "<div class='panel'>";
+  html += "<h3>Test MQTT/OSC</h3>";
+  html += "<form action='/test_mqtt' method='POST' style='margin-bottom:8px;'><input class='btn' type='submit' value='Test MQTT (1→6 ON, 1→6 OFF)'></form>";
+  html += "<form action='/test_osc' method='POST'><input class='btn' type='submit' value='Test OSC (1→6 ON, 1→6 OFF)'></form>";
+  html += "</div>";
+
+  //================ FIRMWARE UPDATE (OTA) ================
+
+  html += "<div class='panel'>";
+  html += "<h3>Firmware Update (OTA)</h3>";
+  html += "<div class='note'>Chọn file firmware.bin (build từ PlatformIO: .pio/build/esp32-s3-devkitc-1/firmware.bin) rồi bấm Upload. Board tự khởi động lại sau khi nạp xong. KHÔNG rút nguồn/mất mạng giữa chừng - có thể phải nạp lại qua USB nếu hỏng.</div>";
+  html += "<form action='/update' method='POST' enctype='multipart/form-data' onsubmit=\"return confirm('Nạp firmware mới? Board sẽ khởi động lại sau khi xong.');\">";
+  html += "<input type='file' name='firmware' accept='.bin' required style='width:100%;padding:10px;border:1px solid #bfc9d6;border-radius:8px;margin-bottom:8px;background:#fff'>";
+  html += "<input class='btn' type='submit' value='Upload &amp; Update'>";
+  html += "</form>";
+  html += "</div>";
 
   html += "</div>"; // end card
   html += "</body>";
