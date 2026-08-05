@@ -21,7 +21,7 @@ constexpr const char* NVS_KEY(const char (&s)[N]) {
   return s;
 }
 
-#define SENSOR_NUM 6
+#define SENSOR_NUM 5
 
 //================ INPUT =================
 extern const uint8_t sensorPins[SENSOR_NUM];
