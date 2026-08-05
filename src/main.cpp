@@ -62,8 +62,8 @@ unsigned long heartbeatInterval = 60000; // ms, 0 = tat
 
 //================ SENSOR / RELAY / TRIGGER ================
 
-const uint8_t sensorPins[SENSOR_NUM] = {39, 40, 42, 2, 1}; 
-const uint8_t relayPins[SENSOR_NUM] = {15, 7, 6, 5, 4}; //{4, 5, 6, 7, 15}; 
+const uint8_t sensorPins[SENSOR_NUM] = {1, 2, 42, 39, 40}; //{39, 40, 42, 2, 1}; 
+const uint8_t relayPins[SENSOR_NUM] = {4, 5, 6, 7, 15}; //{7, 15, 6, 5, 4};
 
 bool sensorEnable[SENSOR_NUM] = {true, true, true, true, true};
 bool relayState[SENSOR_NUM] = {0};
