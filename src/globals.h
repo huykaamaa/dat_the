@@ -29,8 +29,8 @@ extern const uint8_t sensorPins[SENSOR_NUM];
 
 //================ RELAY =================
 extern const uint8_t relayPins[SENSOR_NUM];
-#define RELAY_ON  HIGH
-#define RELAY_OFF LOW
+#define RELAY_ON  LOW
+#define RELAY_OFF HIGH
 
 extern WebServer server;
 extern Preferences prefs;

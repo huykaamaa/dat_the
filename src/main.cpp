@@ -9,15 +9,15 @@
 const char *apSSID = "ESP32_Player";
 const char *apPASS = "12345678";
 
-char wifiSSID[32] = "";
-char wifiPASS[64] = "";
+char wifiSSID[32] = "Router 4G";
+char wifiPASS[64] = "12121212";
 
 // F19-style static-IP fallback (ported from phòng Cân Tim): same 192.168.99.0/24 as this
 // room's old OSC target default (192.168.99.187) and Cân Tim's own defaults (.199 MQTT
 // broker .225) - .198 is a judgment call to avoid colliding with those, not a confirmed
 // venue-network fact.
-char staticIP[16]   = "192.168.99.198";
-char staticGW[16]   = "192.168.99.1";
+char staticIP[16]   = "192.168.8.3";
+char staticGW[16]   = "192.168.8.1";
 char staticMask[16] = "255.255.255.0";
 
 // F6-style Basic Auth (ported from phòng Cân Tim), gates /save and /test_relay.
@@ -62,8 +62,8 @@ unsigned long heartbeatInterval = 60000; // ms, 0 = tat
 
 //================ SENSOR / RELAY / TRIGGER ================
 
-const uint8_t sensorPins[SENSOR_NUM] = {4, 5, 6, 7, 15, 16};
-const uint8_t relayPins[SENSOR_NUM] = {1, 2, 42, 41, 40, 39};
+const uint8_t sensorPins[SENSOR_NUM] = {39, 40, 41, 42, 2, 1}; //{4, 5, 6, 7, 15, 16};
+const uint8_t relayPins[SENSOR_NUM] = {7, 15, 16, 6, 5, 4};
 
 bool sensorEnable[SENSOR_NUM] = {true, true, true, true, true, true};
 bool relayState[SENSOR_NUM] = {0};
