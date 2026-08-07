@@ -9,8 +9,8 @@
 const char *apSSID = "DAT_THE";
 const char *apPASS = "12121212";
 
-char wifiSSID[32] = "Router 4G";
-char wifiPASS[64] = "12121212";
+char wifiSSID[32] = "doaz";
+char wifiPASS[64] = "zxcvzxcv";
 
 // F19-style static-IP fallback (ported from phòng Cân Tim): same 192.168.99.0/24 as this
 // room's old OSC target default (192.168.99.187) and Cân Tim's own defaults (.199 MQTT
