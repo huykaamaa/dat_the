@@ -215,7 +215,7 @@ void handleRoot()
   html += htmlEscape(staticMask);
   html += "'></div>";
   html += "</div>";
-  html += "<div class='note'>Mặc định: thiết bị thử DHCP trước (tối đa 20s lúc boot), chỉ dùng IP tĩnh này khi DHCP thất bại. Tick \"Ưu tiên IP tĩnh\" để dùng IP tĩnh ngay từ đầu, bỏ hoàn toàn 20s chờ DHCP - nếu IP/Gateway/Netmask sai hoặc không kết nối được thì tự động lùi về thử DHCP như bình thường. Đổi giá trị ở đây cần reboot board mới áp dụng.</div>";
+  html += "<div class='note'>Mặc định: thiết bị thử DHCP trước (tối đa 20s lúc boot), chỉ dùng IP tĩnh này khi DHCP thất bại. Tick \"Ưu tiên IP tĩnh\" để dùng IP tĩnh ngay từ đầu, bỏ hoàn toàn 20s chờ DHCP. Sau khi vào được WiFi, board <b>ping thử gateway</b> - không có hồi đáp thì coi như IP nhập sai mạng và tự lùi về DHCP (vào được WiFi KHÔNG có nghĩa là IP đúng, hai việc đó độc lập nhau). Nếu router chặn ICMP thì board lùi về DHCP không cần thiết, chỉ chậm thêm ~20s và vẫn quay lại đúng IP tĩnh này nếu DHCP cũng không lên. Đổi giá trị ở đây cần reboot board mới áp dụng.</div>";
   html += "</div>";
 
   html += "</div>"; // end tab-network

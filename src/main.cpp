@@ -3,6 +3,7 @@
 #include "web.h"
 #include "audio.h"
 #include "html.h"
+#include "ping/ping_sock.h" // esp_ping - xac minh gateway co that su tra loi (xem gatewayReachable())
 
 //================ NETWORKING ================
 
@@ -185,11 +186,74 @@ void resyncAllPositions() {
   }
 }
 
+// ======================================================================
+// KIEM TRA GATEWAY CO THAT SU TRA LOI KHONG (ICMP echo)
+// ======================================================================
+// Ly do ton tai: WiFi.begin() associate o TANG LIEN KET, hoan toan doc lap voi IP.
+// WL_CONNECTED chi co nghia "da vao duoc router", KHONG co nghia "bo IP nay dung". Nen mot IP
+// tinh dung DINH DANG nhung sai MANG (vd 192.168.8.4 trong khi LAN la 192.168.1.x) van lam
+// connectWiFiAttempt(true) tra ve true - board chot cung o mot dia chi khong ai toi duoc, va
+// nhanh lui ve DHCP khong bao gio chay.
+static volatile bool gwPingDone = false;
+static volatile bool gwPingGotReply = false;
+
+static void onGwPingSuccess(esp_ping_handle_t hdl, void *args) { gwPingGotReply = true; }
+static void onGwPingEnd(esp_ping_handle_t hdl, void *args) { gwPingDone = true; }
+
+static bool gatewayReachable(IPAddress gw)
+{
+    // Khac ban Ethernet: khong can cho link vi ham nay chi duoc goi SAU khi WL_CONNECTED,
+    // tuc da associate xong - WiFi khong co khai niem "link chua len" rieng.
+    ip_addr_t target;
+    memset(&target, 0, sizeof(target));
+    target.type = IPADDR_TYPE_V4;
+    target.u_addr.ip4.addr = (uint32_t)gw; // IPAddress va ip4_addr cung network byte order
+
+    esp_ping_config_t cfg = ESP_PING_DEFAULT_CONFIG();
+    cfg.target_addr = target;
+    cfg.count = 3;
+    cfg.interval_ms = 300;
+    cfg.timeout_ms = 700;
+
+    esp_ping_callbacks_t cbs;
+    memset(&cbs, 0, sizeof(cbs));
+    cbs.on_ping_success = onGwPingSuccess;
+    cbs.on_ping_end = onGwPingEnd;
+
+    gwPingDone = false;
+    gwPingGotReply = false;
+
+    esp_ping_handle_t hdl = NULL;
+    if (esp_ping_new_session(&cfg, &cbs, &hdl) != ESP_OK || hdl == NULL)
+    {
+        // Loi cua ta chu khong phai loi cau hinh cua operator - khong lay lam co de vut IP tinh.
+        Serial.println("Khong tao duoc phien ping - bo qua buoc kiem tra, giu IP tinh");
+        return true;
+    }
+
+    esp_ping_start(hdl);
+    const unsigned long PING_TOTAL_MS = 4000UL;
+    unsigned long t0 = millis();
+    while (!gwPingDone && (millis() - t0) < PING_TOTAL_MS)
+    {
+        delay(20);
+    }
+    esp_ping_stop(hdl);
+    esp_ping_delete_session(hdl);
+
+    return gwPingGotReply;
+}
+
 // Single connection attempt. useStatic=false lets DHCP assign the IP (normal path);
 // useStatic=true forces WiFi.config() with the saved fallback IP/gateway/mask first, for
 // when DHCP itself isn't answering (see connectWiFi() below) - same STA credentials either
 // way, only the IP assignment differs.
-static bool connectWiFiAttempt(bool useStatic)
+//
+// verifyGateway CHI bat o nhanh "uu tien IP tinh", noi ma that bai con co DHCP de lui ve.
+// KHONG bat o nhanh fallback cuoi (DHCP da chet roi): o do IP tinh la hy vong cuoi cung, ma
+// router chan ICMP thi ta se vut bo mot bo IP co the dang dung va roi han xuong AP-only, mat
+// luon MQTT/OSC. Danh doi khong dang.
+static bool connectWiFiAttempt(bool useStatic, bool verifyGateway)
 {
     if (strlen(wifiSSID) == 0)
         return false;
@@ -242,6 +306,22 @@ static bool connectWiFiAttempt(bool useStatic)
     Serial.print("Connected! IP: ");
     Serial.println(WiFi.localIP());
 
+    // Associate xong KHONG co nghia bo IP dung - xem gatewayReachable(). Ping gateway de xac
+    // minh truoc khi bao thanh cong.
+    if (useStatic && verifyGateway)
+    {
+        IPAddress gw;
+        if (gw.fromString(staticGW) && !gatewayReachable(gw))
+        {
+            Serial.print("Gateway ");
+            Serial.print(staticGW);
+            Serial.println(" KHONG tra loi ping - IP tinh nhieu kha nang sai mang, se thu DHCP");
+            WiFi.disconnect(true);
+            return false;
+        }
+        Serial.println("Gateway tra loi ping - IP tinh dung mang");
+    }
+
     return true;
 }
 
@@ -259,22 +339,38 @@ bool connectWiFi(bool &usedStaticFallback)
     // thuong, nen tick nham khong lam mat board.
     if (staticFirst)
     {
-        if (connectWiFiAttempt(true))
+        // verifyGateway = true: o nhanh nay that bai van con DHCP de lui ve nen kiem tra chat
+        // duoc. Neu router chan ICMP thi day la canh bao gia, gia phai tra la 20s cho DHCP -
+        // va neu DHCP cung khong len thi nhanh fallback ben duoi VAN ap lai dung IP tinh nay
+        // (lan do khong kiem ping), nen truong hop xau nhat chi la boot cham hon.
+        if (connectWiFiAttempt(true, true))
         {
             usedStaticFallback = true;
             return true;
         }
 
         Serial.println("Static IP (uu tien) failed, retrying with DHCP");
-        return connectWiFiAttempt(false);
+        if (connectWiFiAttempt(false, false))
+            return true;
+
+        Serial.println("DHCP cung that bai - quay lai IP tinh, lan nay khong kiem ping");
+        if (connectWiFiAttempt(true, false))
+        {
+            usedStaticFallback = true;
+            return true;
+        }
+
+        return false;
     }
 
-    if (connectWiFiAttempt(false))
+    if (connectWiFiAttempt(false, false))
         return true;
 
     Serial.println("DHCP failed, retrying with static IP fallback");
 
-    if (connectWiFiAttempt(true))
+    // verifyGateway = false: DHCP da chet, IP tinh la hy vong cuoi. Vut no di vi khong ping
+    // duoc dong nghia voi roi han xuong AP-only (mat MQTT/OSC) - te hon la cu thu dung no.
+    if (connectWiFiAttempt(true, false))
     {
         usedStaticFallback = true;
         return true;
