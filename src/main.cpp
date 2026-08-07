@@ -6,8 +6,8 @@
 
 //================ NETWORKING ================
 
-const char *apSSID = "ESP32_Player";
-const char *apPASS = "12345678";
+const char *apSSID = "DAT_THE";
+const char *apPASS = "12121212";
 
 char wifiSSID[32] = "Router 4G";
 char wifiPASS[64] = "12121212";
@@ -16,7 +16,7 @@ char wifiPASS[64] = "12121212";
 // room's old OSC target default (192.168.99.187) and Cân Tim's own defaults (.199 MQTT
 // broker .225) - .198 is a judgment call to avoid colliding with those, not a confirmed
 // venue-network fact.
-char staticIP[16]   = "192.168.8.3";
+char staticIP[16]   = "192.168.8.4";
 char staticGW[16]   = "192.168.8.1";
 char staticMask[16] = "255.255.255.0";
 
