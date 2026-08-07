@@ -25,7 +25,7 @@ bool staticFirst = false;
 char authUser[32] = "admin";
 char authPass[32] = "admin";
 
-// Diagnostic AP: broadcasts the STA's IP as an open AP SSID for a few minutes after connect
+// Diagnostic AP: broadcasts the STA's IP as an AP SSID (password = apPASS) for a few minutes after connect
 // so an operator can read it off a phone's WiFi list instead of needing Serial (Cân Tim).
 static const unsigned long DIAG_AP_DURATION_MS = 5UL * 60UL * 1000UL;
 bool diagApActive = false;
@@ -283,16 +283,21 @@ bool connectWiFi(bool &usedStaticFallback)
     return false;
 }
 
-// Open (no password) diagnostic AP broadcasting the STA's current IP as its SSID, so an
-// operator can read it off a phone's WiFi scan list instead of needing Serial. Auto-off
-// after DIAG_AP_DURATION_MS, handled in loop().
+// Diagnostic AP broadcasting the STA's current IP as its SSID, so an operator can read it
+// off a phone's WiFi scan list instead of needing Serial. Auto-off after
+// DIAG_AP_DURATION_MS, handled in loop().
+//
+// Dung chung apPASS voi AP cau hinh "DAT_THE" (thay vi de mo nhu truoc): SSID da lo dia chi
+// IP noi bo cho moi nguoi xung quanh quet thay, khong nen de bat ky ai cung vao thang duoc
+// Web UI. Dung chung 1 mat khau de operator chi phai nho mot cai. Luu y WPA2 yeu cau toi
+// thieu 8 ky tu - apPASS ngan hon thi softAP() se fail va mat luon duong vao nay.
 void startDiagAp(bool isFallback)
 {
     String ssid = (isFallback ? "DATTHE-STATIC-" : "DATTHE-DHCP-") + WiFi.localIP().toString();
 
     WiFi.mode(WIFI_AP_STA);
 
-    if (WiFi.softAP(ssid.c_str()))
+    if (WiFi.softAP(ssid.c_str(), apPASS))
     {
         diagApActive = true;
         diagApStartMs = millis();
