@@ -46,6 +46,8 @@ extern char wifiPASS[64]; // WPA2 passphrase toi da 63 ky tu + NUL
 extern char staticIP[16];
 extern char staticGW[16];
 extern char staticMask[16];
+// "Uu tien IP tinh" - true = dat IP tinh ngay tu lan thu dau, bo qua han 20s cho DHCP.
+extern bool staticFirst;
 extern char authUser[32];
 extern char authPass[32];
 extern bool diagApActive;

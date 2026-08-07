@@ -140,6 +140,8 @@ void handleSave() {
   saveIpArg("static_gw", staticGW, sizeof(staticGW), staticAddrInvalid);
   saveIpArg("static_mask", staticMask, sizeof(staticMask), staticAddrInvalid);
 
+  staticFirst = server.hasArg("static_first");
+
   // Admin Auth - password field is always rendered blank; only overwrite if the operator
   // actually typed a new one.
   saveStringArg("auth_user", authUser, sizeof(authUser));
@@ -437,6 +439,7 @@ int saveConfig() {
   if (!prefs.putString("static_ip", staticIP)) fails++;
   if (!prefs.putString("static_gw", staticGW)) fails++;
   if (!prefs.putString("static_mask", staticMask)) fails++;
+  if (!prefs.putBool(NVS_KEY("static_first"), staticFirst)) fails++;
   if (!prefs.putString("auth_user", authUser)) fails++;
   if (!prefs.putString("auth_pass", authPass)) fails++;
 
@@ -491,6 +494,7 @@ void loadConfig() {
   staticGW[sizeof(staticGW) - 1] = '\0';
   strncpy(staticMask, prefs.getString("static_mask", staticMask).c_str(), sizeof(staticMask) - 1);
   staticMask[sizeof(staticMask) - 1] = '\0';
+  staticFirst = prefs.getBool(NVS_KEY("static_first"), staticFirst);
   strncpy(authUser, prefs.getString("auth_user", authUser).c_str(), sizeof(authUser) - 1);
   authUser[sizeof(authUser) - 1] = '\0';
   strncpy(authPass, prefs.getString("auth_pass", authPass).c_str(), sizeof(authPass) - 1);

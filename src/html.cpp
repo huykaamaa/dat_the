@@ -194,6 +194,9 @@ void handleRoot()
   html += "'></div>";
   html += "</div>";
   html += "<div class='sub'>IP tĩnh dự phòng (khi DHCP thất bại)</div>";
+  html += "<div class='single'><label><input type='checkbox' name='static_first' value='1'";
+  html += staticFirst ? " checked" : "";
+  html += "> Ưu tiên IP tĩnh (bỏ qua DHCP)</label></div>";
   html += "<div class='row'>";
   html += "<div class='field'><label>Static IP</label><input name='static_ip' value='";
   html += htmlEscape(staticIP);
@@ -205,7 +208,7 @@ void handleRoot()
   html += htmlEscape(staticMask);
   html += "'></div>";
   html += "</div>";
-  html += "<div class='note'>Thiết bị luôn thử DHCP trước (tối đa 20s lúc boot), chỉ dùng IP tĩnh khi DHCP thất bại. Đổi giá trị ở đây cần reboot board mới áp dụng.</div>";
+  html += "<div class='note'>Mặc định: thiết bị thử DHCP trước (tối đa 20s lúc boot), chỉ dùng IP tĩnh này khi DHCP thất bại. Tick \"Ưu tiên IP tĩnh\" để dùng IP tĩnh ngay từ đầu, bỏ hoàn toàn 20s chờ DHCP - nếu IP/Gateway/Netmask sai hoặc không kết nối được thì tự động lùi về thử DHCP như bình thường. Đổi giá trị ở đây cần reboot board mới áp dụng.</div>";
   html += "</div>";
 
   html += "</div>"; // end tab-network

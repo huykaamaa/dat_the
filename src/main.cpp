@@ -19,6 +19,7 @@ char wifiPASS[64] = "12121212";
 char staticIP[16]   = "192.168.8.4";
 char staticGW[16]   = "192.168.8.1";
 char staticMask[16] = "255.255.255.0";
+bool staticFirst = false;
 
 // F6-style Basic Auth (ported from phòng Cân Tim), gates /save and /test_relay.
 char authUser[32] = "admin";
@@ -201,10 +202,19 @@ static bool connectWiFiAttempt(bool useStatic)
         IPAddress ip, gw, mask;
         if (!ip.fromString(staticIP) || !gw.fromString(staticGW) || !mask.fromString(staticMask))
         {
-            Serial.println("Static IP fallback config invalid, skip");
+            Serial.println("Static IP config invalid, skip");
             return false;
         }
-        WiFi.config(ip, gw, mask);
+        // Gateway lam DNS1: voi "uu tien IP tinh" thi day la duong ket noi BINH THUONG (khong
+        // con la fallback hiem gap), nen thieu DNS se lam hong MQTT/OSC neu nhap hostname.
+        WiFi.config(ip, gw, mask, gw);
+    }
+    else
+    {
+        // Xoa cau hinh IP tinh cua lan thu TRUOC (neu co) de bat lai DHCP client. Khong co
+        // dong nay thi khi "uu tien IP tinh" that bai va lui ve DHCP, WiFi.config() cu van
+        // con hieu luc -> lan thu "DHCP" nay thuc chat van dung dung IP tinh vua fail.
+        WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE);
     }
 
     WiFi.mode(WIFI_STA);
@@ -242,6 +252,22 @@ static bool connectWiFiAttempt(bool useStatic)
 bool connectWiFi(bool &usedStaticFallback)
 {
     usedStaticFallback = false;
+
+    // "Uu tien IP tinh": dat IP tinh ngay tu lan thu dau, bo han 20s cho DHCP (boot nhanh hon,
+    // dung khi mang khong co DHCP server hoac muon chac chan mot IP co dinh). Neu lan thu do
+    // that bai (IP/GW/mask nhap sai, hoac khong associate duoc) van lui ve DHCP nhu binh
+    // thuong, nen tick nham khong lam mat board.
+    if (staticFirst)
+    {
+        if (connectWiFiAttempt(true))
+        {
+            usedStaticFallback = true;
+            return true;
+        }
+
+        Serial.println("Static IP (uu tien) failed, retrying with DHCP");
+        return connectWiFiAttempt(false);
+    }
 
     if (connectWiFiAttempt(false))
         return true;
