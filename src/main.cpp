@@ -45,7 +45,7 @@ char mqttUser[32]         = "";
 // Mac dinh RONG - khong hardcode mat khau that vao source (source nam trong git). Nhap 1 lan
 // qua Web UI, sau do no nam trong NVS va song qua cac lan nap firmware moi.
 char mqttPass[32]         = "";
-char mqttTopic[64]        = "datthe/vitri"; // moi vi tri se publish vao "<mqttTopic>/<1..6>"
+char mqttTopic[64]        = "datthe/vitri"; // moi vi tri se publish vao "<mqttTopic>/<1..SENSOR_NUM>"
 char mqttFullValue[32]    = "FULL";
 char mqttMissingValue[32] = "MISSING";
 
@@ -175,7 +175,7 @@ static void checkSensors()
   }
 }
 
-// Gui lai trang thai HIEN TAI (khong tinh test-pulse) cua ca 6 vi tri qua MQTT/OSC, dung
+// Gui lai trang thai HIEN TAI (khong tinh test-pulse) cua ca SENSOR_NUM vi tri qua MQTT/OSC, dung
 // nguyen topic/dia chi/gia tri nhu binh thuong - khong phai message rieng biet, chi la
 // "nhac lai" cue gan nhat. Dung cho heartbeat dinh ky va cho buoc ket thuc chuoi Test trong
 // web.cpp.

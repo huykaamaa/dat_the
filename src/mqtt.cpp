@@ -29,7 +29,7 @@ static void writeOscInt32(WiFiUDP &udp, int32_t value) {
   udp.write(bytes, sizeof(bytes));
 }
 
-// addressTemplate dung chung cho ca 6 vi tri, "{id}" duoc thay bang vi tri (1..6) truoc khi gui
+// addressTemplate dung chung cho ca SENSOR_NUM vi tri, "{id}" duoc thay bang vi tri (1..SENSOR_NUM) truoc khi gui
 // vd "/composition/layers/1/clips/{id}/connect" -> vi tri 3 se gui "/composition/layers/1/clips/3/connect"
 static void sendOscAt(const char *addressTemplate, int id, int value) {
   if (!oscEnabled || strlen(oscIp) == 0 || oscPort == 0) return;

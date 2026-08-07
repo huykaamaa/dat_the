@@ -55,7 +55,7 @@ extern unsigned long diagApStartMs;
 
 // MQTT - ported tu gia_sach (ban goc, truoc khi rut tu 6 xuong 2 sensor), tu than gia_sach
 // lay hang tang MQTT client/OSC encode nay tu can_tim. Moi vi tri (the) publish rieng vao
-// "<mqttTopic>/<1..6>".
+// "<mqttTopic>/<1..SENSOR_NUM>".
 extern esp_mqtt_client_handle_t mqtt;
 extern bool mqttConnected;
 extern bool mqttEnabled;
@@ -68,7 +68,7 @@ extern char mqttFullValue[32];
 extern char mqttMissingValue[32];
 
 // OSC - CO va TRONG la 2 message OSC hoan toan tach biet (dia chi rieng + int rieng).
-// "{id}" trong 2 dia chi duoc thay bang vi tri (1..6) truoc khi gui.
+// "{id}" trong 2 dia chi duoc thay bang vi tri (1..SENSOR_NUM) truoc khi gui.
 extern bool oscEnabled;
 extern char oscIp[32];
 extern uint16_t oscPort;
@@ -77,7 +77,7 @@ extern char oscAddressMissing[64];
 extern int oscValueFull;
 extern int oscValueMissing;
 
-// Heartbeat/resync - dinh ky gui lai trang thai hien tai cua ca 6 vi tri qua MQTT/OSC (khong
+// Heartbeat/resync - dinh ky gui lai trang thai hien tai cua ca SENSOR_NUM vi tri qua MQTT/OSC (khong
 // doi topic/dia chi, chi gui lai gia tri hien tai) - bu lai neu 1 lan doi trang thai bi rot
 // mang (MQTT QoS0/UDP OSC deu khong dam bao gui toi noi). 0 = tat heartbeat.
 extern unsigned long heartbeatInterval;
@@ -100,7 +100,7 @@ extern bool triggerOR;
 // pattern as the sibling Cân Tim project's saveDistanceConfig().
 void triggerRelayTest(int id);
 
-// Gui lai trang thai HIEN TAI cua ca 6 vi tri qua MQTT/OSC - khong phai message rieng biet,
+// Gui lai trang thai HIEN TAI cua ca SENSOR_NUM vi tri qua MQTT/OSC - khong phai message rieng biet,
 // chi la "nhac lai" cue gan nhat. Dung cho heartbeat dinh ky va cho buoc ket thuc chuoi Test
 // trong web.cpp. Dinh nghia trong main.cpp.
 void resyncAllPositions();

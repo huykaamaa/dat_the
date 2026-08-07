@@ -26,6 +26,10 @@ static String htmlEscape(const String &s)
 void handleRoot()
 {
   String html;
+  // Trang nay dai ~14KB. Khong reserve() thi day la ~15 lan realloc+memcpy tang dan moi lan
+  // mo trang, moi lan bo lai mot lo block chet giua heap.
+  html.reserve(16384);
+
   html += "<!DOCTYPE html>";
   html += "<html>";
   html += "<head>";
@@ -42,7 +46,7 @@ void handleRoot()
   html += ".sensor{border:1px solid #d8e3f0;border-radius:8px;padding:4px 8px;margin-bottom:5px;background:#fbfdff;}";
   html += ".row{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;align-items:center;}";
   html += ".row:first-child{margin-top:0;}";
-  html += ".row a{flex:1;min-width:140px;text-decoration:none;}";
+  html += ".row a,.row>form{flex:1;min-width:140px;text-decoration:none;}";
   html += ".field{flex:1;min-width:200px;}";
   html += ".field label,.single label{display:block;font-weight:bold;margin-bottom:4px;color:#556270;font-size:13px;}";
   html += ".field input,.single input{width:100%;padding:8px;border:1px solid #bfc9d6;border-radius:8px;font-size:14px;background:#fff;}";
@@ -93,8 +97,10 @@ void handleRoot()
   //================ PLAY / STOP ================
 
   html += "<div class='row'>";
-  html += "<a href='/play'><button class='btn btn-play' type='button'>▶ PLAY</button></a>";
-  html += "<a href='/stop'><button class='btn btn-stop' type='button'>■ STOP</button></a>";
+  // Form POST chu khong phai <a href> nua: /play va /stop gio yeu cau Basic Auth va chi nhan
+  // POST (xem setupWeb() trong web.cpp).
+  html += "<form action='/play' method='POST'><button class='btn btn-play' type='submit'>▶ PLAY</button></form>";
+  html += "<form action='/stop' method='POST'><button class='btn btn-stop' type='submit'>■ STOP</button></form>";
   html += "</div>";
 
   html += "<div class='tabs'>";
@@ -189,9 +195,10 @@ void handleRoot()
   html += "<div class='field'><label>WiFi SSID</label><input name='ssid' value='";
   html += htmlEscape(wifiSSID);
   html += "'></div>";
-  html += "<div class='field'><label>WiFi Password</label><input type='password' name='pass' value='";
-  html += htmlEscape(wifiPASS);
-  html += "'></div>";
+  // KHONG do wifiPASS ra HTML: type='password' chi che tren man hinh, View Source van doc
+  // duoc nguyen van - ma trang "/" thi khong yeu cau dang nhap. Cung ly do da ap dung cho
+  // mqtt_pass va auth_pass ben duoi. De trong = giu nguyen (xem saveStringArg trong web.cpp).
+  html += "<div class='field'><label>WiFi Password</label><input type='password' name='pass' placeholder='(giữ nguyên nếu để trống)'></div>";
   html += "</div>";
   html += "<div class='sub'>IP tĩnh dự phòng (khi DHCP thất bại)</div>";
   html += "<div class='single'><label><input type='checkbox' name='static_first' value='1'";
@@ -236,7 +243,7 @@ void handleRoot()
   html += "<div class='field'><label>Giá trị khi CÓ</label><input name='mqtt_full' value='" + htmlEscape(mqttFullValue) + "'></div>";
   html += "<div class='field'><label>Giá trị khi TRỐNG</label><input name='mqtt_missing' value='" + htmlEscape(mqttMissingValue) + "'></div>";
   html += "</div>";
-  html += "<div class='note'>Mỗi vị trí (thẻ) tự publish vào &lt;topic gốc&gt;/&lt;1..6&gt;, payload chỉ là giá trị. Ví dụ topic gốc '" + htmlEscape(mqttTopic) + "' → vị trí 3 publish vào '" + htmlEscape(mqttTopic) + "/3'. Ô Pass để trống nghĩa là giữ nguyên mật khẩu đang dùng.</div>";
+  html += "<div class='note'>Mỗi vị trí (thẻ) tự publish vào &lt;topic gốc&gt;/&lt;1.." + String(SENSOR_NUM) + "&gt;, payload chỉ là giá trị. Ví dụ topic gốc '" + htmlEscape(mqttTopic) + "' → vị trí 3 publish vào '" + htmlEscape(mqttTopic) + "/3'. Ô Pass để trống nghĩa là giữ nguyên mật khẩu đang dùng.</div>";
   html += "</div>";
 
   html += "<div class='panel'>";
@@ -254,13 +261,13 @@ void handleRoot()
   html += "<div class='field'><label>Địa chỉ khi TRỐNG</label><input name='osc_address_missing' value='" + htmlEscape(oscAddressMissing) + "' placeholder='.../clips/{id}/disconnect'></div>";
   html += "<div class='field'><label>Giá trị khi TRỐNG</label><input name='osc_value_missing' value='" + String(oscValueMissing) + "'></div>";
   html += "</div>";
-  html += "<div class='note'>Viết {id} ở chỗ cần chèn số vị trí (1..6). CÓ và TRỐNG là 2 message OSC độc lập, mỗi cái 1 địa chỉ + 1 giá trị riêng.</div>";
+  html += "<div class='note'>Viết {id} ở chỗ cần chèn số vị trí (1.." + String(SENSOR_NUM) + "). CÓ và TRỐNG là 2 message OSC độc lập, mỗi cái 1 địa chỉ + 1 giá trị riêng.</div>";
   html += "</div>";
 
   html += "<div class='panel'>";
   html += "<h3>Heartbeat (gửi lại trạng thái định kỳ)</h3>";
   html += "<div class='single'><label>Chu kỳ (ms, 0 = tắt)</label><input name='heartbeat' value='" + String(heartbeatInterval) + "'></div>";
-  html += "<div class='note'>MQTT (QoS0) và OSC (UDP) đều không đảm bảo gửi tới nơi - nếu đúng lúc đổi trạng thái mà mạng chập chờn, bên nhận có thể bị lệch cho tới lần đổi kế tiếp. Heartbeat gửi lại trạng thái hiện tại của cả 6 vị trí theo chu kỳ này để tự đồng bộ lại.</div>";
+  html += "<div class='note'>MQTT (QoS0) và OSC (UDP) đều không đảm bảo gửi tới nơi - nếu đúng lúc đổi trạng thái mà mạng chập chờn, bên nhận có thể bị lệch cho tới lần đổi kế tiếp. Heartbeat gửi lại trạng thái hiện tại của cả " + String(SENSOR_NUM) + " vị trí theo chu kỳ này để tự đồng bộ lại.</div>";
   html += "</div>";
 
   html += "</div>"; // end tab-iot
@@ -272,8 +279,10 @@ void handleRoot()
 
   html += "<div class='panel'>";
   html += "<h3>Test MQTT/OSC</h3>";
-  html += "<form action='/test_mqtt' method='POST' style='margin-bottom:8px;'><input class='btn' type='submit' value='Test MQTT (1→6 ON, 1→6 OFF)'></form>";
-  html += "<form action='/test_osc' method='POST'><input class='btn' type='submit' value='Test OSC (1→6 ON, 1→6 OFF)'></form>";
+  // Mot nut duy nhat: chuoi test goi triggerSensor(), von ban CA MQTT LAN OSC cung luc, nen
+  // 2 nut rieng truoc day chi gay hieu nham la test duoc tung kenh mot.
+  html += "<form action='/test_iot' method='POST'><input class='btn' type='submit' value='Test MQTT + OSC (1→" + String(SENSOR_NUM) + " ON, 1→" + String(SENSOR_NUM) + " OFF)'></form>";
+  html += "<div class='note'>Bắn lần lượt " + String(SENSOR_NUM) + " vị trí sang CÓ, rồi " + String(SENSOR_NUM) + " vị trí sang TRỐNG, cách nhau 1 giây, sau đó tự gửi lại trạng thái thật. MQTT và OSC đi cùng nhau, không tách riêng được.</div>";
   html += "</div>";
 
   //================ FIRMWARE UPDATE (OTA) ================

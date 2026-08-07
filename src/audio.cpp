@@ -26,8 +26,10 @@ static AudioPlayer player(source, i2s, decoder);
 
 void audioInit()
 {
-  fadeInTime = prefs.getUInt("fadein", 10000);
-  fadeOutTime = prefs.getUInt("fadeout", 5000);
+  // KHONG doc lai fadein/fadeout o day. loadConfig() (web.cpp) da nap 2 gia tri nay tu NVS
+  // roi va da goi prefs.end() - Preferences::getUInt() tren handle DA DONG chi tra ve
+  // defaultValue, nen 2 dong cu o day am tham ghi de gia tri vua nap bang 10000/5000. Hau
+  // qua: chinh Fade In/Out tren web luu OK nhung reboot phat la mat.
 
   spiSD.begin(SD_SCK, SD_MISO, SD_MOSI, SD_CS);
   sdOK = SD.begin(SD_CS, spiSD);
@@ -122,7 +124,9 @@ void audioUpdate() {
   //================ Fade In =================
 
   if (isFadeIn) {
-    float p = (float)(now - fadeStart) / fadeInTime;
+    // fadeInTime = 0 (fade tuc thi) hop le tu Web UI. Chia cho 0 khi now == fadeStart cho ra
+    // NaN, ma "NaN >= 1.0f" la false -> setVolume(NaN). Chan trong 1 nhanh rieng.
+    float p = fadeInTime ? (float)(now - fadeStart) / fadeInTime : 1.0f;
     if (p >= 1.0f) {
       p = 1.0f;
       isFadeIn = false;
@@ -133,7 +137,7 @@ void audioUpdate() {
   //================ Fade Out =================
 
   if (isFadeOut) {
-    float p = (float)(now - fadeStart) / fadeOutTime;
+    float p = fadeOutTime ? (float)(now - fadeStart) / fadeOutTime : 1.0f;
     if (p >= 1.0f) {
       player.setVolume(0);
       player.end();

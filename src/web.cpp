@@ -18,7 +18,14 @@ static bool requireAuth()
   return true;
 }
 
+// Chuoi PHAI la so thap phan thuan (khong dau, khong ky tu thua) va nam trong [minVal,maxVal].
+// Truoc day chi dua vao toInt(), von tra ve 0 cho rac ("abc") va cat duoi cho chuoi lai
+// ("80xyz" -> 80) - nghia la moi khoang co minVal <= 0 deu cho rac lot qua thanh so 0.
 static bool parseValidatedLong(const String &s, long minVal, long maxVal, long &out) {
+  if (s.length() == 0 || s.length() > 10) return false; // >10 chu so la chac chan tran long
+  for (size_t i = 0; i < s.length(); i++) {
+    if (!isdigit((unsigned char)s[i])) return false;
+  }
   long v = s.toInt();
   if (v < minVal || v > maxVal) return false;
   out = v;
@@ -57,6 +64,10 @@ static bool saveIpArg(const char *argName, char *dest, size_t destSize, bool &in
 void handleData()
 {
   String data;
+  // Trang dashboard poll route nay 2 lan/giay VINH VIEN khi co tab mo. Khong reserve() thi
+  // moi lan goi la mot chuoi realloc tang dan - dung cai nguy co phan manh heap ma globals.h
+  // vien dan de doi config sang char[].
+  data.reserve(1024);
 
   data += "<span style='font-size:12px;color:#94a3b8'>Firmware build: " __DATE__ " " __TIME__ "</span><br>";
 
@@ -106,17 +117,33 @@ void handleSave() {
     return;
   }
 
-  if (server.hasArg("fi"))
-    fadeInTime = server.arg("fi").toInt();
+  // Fade/debounce: truoc day gan thang toInt() vao uint32_t, nen nhap "-1" thanh 4294967295 ms
+  // - debounce lon nhu vay khien dieu kien "millis() - debounceStart >= debounceTime" khong
+  // bao gio dung, tuc nhac khong bao gio kick nua, va gia tri do nam luon trong NVS. Validate
+  // giong mqtt_port/osc_port thay vi tin vao toInt().
+  const long TIMING_MAX_MS = 600000; // 10 phut - qua nguong nay chac chan la go nham
+  bool timingInvalid = false;
+  long tv;
 
-  if (server.hasArg("fo"))
-    fadeOutTime = server.arg("fo").toInt();
+  if (server.hasArg("fi")) {
+    if (parseValidatedLong(server.arg("fi"), 0, TIMING_MAX_MS, tv)) fadeInTime = (uint32_t)tv;
+    else timingInvalid = true;
+  }
 
-  if (server.hasArg("db"))
-    debounceTime = server.arg("db").toInt();
+  if (server.hasArg("fo")) {
+    if (parseValidatedLong(server.arg("fo"), 0, TIMING_MAX_MS, tv)) fadeOutTime = (uint32_t)tv;
+    else timingInvalid = true;
+  }
 
-  if (server.hasArg("dbR"))
-    debounceTimeRelay = server.arg("dbR").toInt();
+  if (server.hasArg("db")) {
+    if (parseValidatedLong(server.arg("db"), 0, TIMING_MAX_MS, tv)) debounceTime = (uint32_t)tv;
+    else timingInvalid = true;
+  }
+
+  if (server.hasArg("dbR")) {
+    if (parseValidatedLong(server.arg("dbR"), 0, TIMING_MAX_MS, tv)) debounceTimeRelay = (uint32_t)tv;
+    else timingInvalid = true;
+  }
 
   // Sensor Enable
   for (int i = 0; i < SENSOR_NUM; i++) {
@@ -258,6 +285,7 @@ void handleSave() {
   if (mqttPortInvalid) alertMsg += " (MQTT port rejected: must be 1-65535)";
   if (oscPortInvalid) alertMsg += " (OSC port rejected: must be 1-65535)";
   if (staticAddrInvalid) alertMsg += " (Static IP/gateway/netmask rejected: not a valid IPv4 address)";
+  if (timingInvalid) alertMsg += " (Fade/Debounce rejected: must be a whole number 0-600000 ms)";
 
   server.send(200, "text/html", "<script>alert('" + alertMsg + "');window.location.href='/';</script>");
 }
@@ -276,9 +304,9 @@ void handleTestRelay() {
   server.send(302, "text/plain", "");
 }
 
-// Test MQTT/OSC: ban lan luot vi tri 1..6 ON (CO) truoc, roi 1..6 OFF (TRONG), cach nhau
-// 1s/buoc - tong 12 buoc. Dung millis(), KHONG dung delay(), de khong block loop() (ported
-// tu gia_sach ban goc).
+// Test MQTT/OSC: ban lan luot vi tri 1..SENSOR_NUM ON (CO) truoc, roi 1..SENSOR_NUM OFF
+// (TRONG), cach nhau 1s/buoc - tong SENSOR_NUM*2 buoc. Dung millis(), KHONG dung delay(), de
+// khong block loop() (ported tu gia_sach ban goc).
 #define TEST_SEQ_INTERVAL_MS 1000UL
 #define TEST_SEQ_TOTAL_STEPS (SENSOR_NUM * 2)
 
@@ -297,7 +325,7 @@ void updateTestSequence() {
   if ((long)(testSeqNextMs - millis()) > 0) return; // an toan qua vong lap millis()
 
   // Buoc phu cuoi cung: tra ben nhan ve trang thai THAT. Chuoi Test goi thang triggerSensor()
-  // nen khong dung vao lastSentState[] - sau buoc "1..6 OFF" ben nhan tin ca 6 vi tri deu
+  // nen khong dung vao lastSentState[] - sau buoc "OFF" ben nhan tin ca SENSOR_NUM vi tri deu
   // TRONG, con thiet bi van nghi minh da gui trang thai cu nen se KHONG tu gui lai. Neu khong
   // resync o day thi lech keo dai toi lan doi trang thai vat ly ke tiep (heartbeat co the dang
   // tat = 0).
@@ -314,14 +342,10 @@ void updateTestSequence() {
   testSeqNextMs = millis() + TEST_SEQ_INTERVAL_MS;
 }
 
-void handleTestMQTT() {
-  if (!requireAuth()) return;
-  startTestSequence();
-  server.sendHeader("Location", "/");
-  server.send(302, "text/plain", "");
-}
-
-void handleTestOSC() {
+// MOT route duy nhat cho ca 2 kenh. Truoc day co /test_mqtt va /test_osc rieng nhung than
+// ham y het nhau, va chuoi test goi triggerSensor() - von ban CA MQTT LAN OSC - nen bam
+// "Test OSC" van publish MQTT. Hai nut rieng chi gay hieu nham la test duoc tung kenh mot.
+void handleTestIot() {
   if (!requireAuth()) return;
   startTestSequence();
   server.sendHeader("Location", "/");
@@ -376,7 +400,14 @@ void handleUpdateUpload() {
 // Chay SAU khi handleUpdateUpload() da nhan xong toan bo file (hoac tu choi tu dau vi sai
 // auth). Bao ket qua len trinh duyet roi tu reboot neu ghi flash thanh cong.
 void handleUpdateFinish() {
-  if (!otaAuthOk) {
+  // Reset ngay khi doc: otaAuthOk la static nen no song qua nhieu request. Mot POST /update
+  // KHONG kem file thi handleUpdateUpload() khong chay lan nao, va co se con giu gia tri cua
+  // lan OTA truoc. Khong khai thac duoc de ghi flash (chunk START luon authenticate() lai
+  // truoc khi ghi byte nao) nhung khong co ly do gi de co do song sot qua request.
+  bool authed = otaAuthOk;
+  otaAuthOk = false;
+
+  if (!authed) {
     server.requestAuthentication();
     return;
   }
@@ -395,17 +426,22 @@ void setupWeb() {
     server.on("/", handleRoot);
     server.on("/save", HTTP_POST, handleSave);
     server.on("/test_relay", HTTP_POST, handleTestRelay);
-    server.on("/test_mqtt", HTTP_POST, handleTestMQTT);
-    server.on("/test_osc", HTTP_POST, handleTestOSC);
+    server.on("/test_iot", HTTP_POST, handleTestIot);
     server.on("/update", HTTP_POST, handleUpdateFinish, handleUpdateUpload);
 
-    server.on("/play", []() {
+    // /play va /stop doi trang thai vat ly cua phong (nhac dang chay giua game) nen phai gated
+    // giong /test_relay. Dong thoi ep HTTP_POST: dang ky 2 tham so nhu truoc la HTTP_ANY, tuc
+    // GET cung chay - chi can mot the <img src="http://<ip>/play"> tren trang web bat ky ma
+    // nhan vien mo la du de bat nhac (CSRF), khong can biet mat khau.
+    server.on("/play", HTTP_POST, []() {
+        if (!requireAuth()) return;
         playMusic();
         server.sendHeader("Location","/");
         server.send(302,"text/plain","");
     });
 
-    server.on("/stop", []() {
+    server.on("/stop", HTTP_POST, []() {
+        if (!requireAuth()) return;
         stopMusic();
         server.sendHeader("Location","/");
         server.send(302,"text/plain","");
@@ -531,6 +567,6 @@ void loadConfig() {
   prefs.end();
 
   if (strcmp(authUser, "admin") == 0 && strcmp(authPass, "admin") == 0) {
-    LOG("AUTH: dang dung mac dinh admin/admin cho /save, /test_relay, /test_mqtt, /test_osc - doi qua Web UI");
+    LOG("AUTH: dang dung mac dinh admin/admin cho /save, /play, /stop, /test_relay, /test_iot, /update - doi qua Web UI");
   }
 }
