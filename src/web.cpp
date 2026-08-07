@@ -199,11 +199,11 @@ void handleSave() {
     needRestartMQTT = true;
   }
 
-  // Bat/tat MQTT phai restart client: truoc day chi chan publish, client van ket noi va
-  // dashboard van bao CONNECTED du da bo tick Enable.
-  bool prevMqttEnabled = mqttEnabled;
+  // Bo tick "Enable MQTT" CHI chan publish, KHONG ngat client - ket noi toi broker duoc giu
+  // nguyen (chu dich cua chu du an: van thay duoc broker con song hay khong khi dang tat
+  // publish). Vi vay khong set needRestartMQTT o day. Dashboard van bao dung vi handleData()
+  // kiem mqttEnabled truoc mqttConnected.
   mqttEnabled = server.hasArg("mqtt_enable");
-  if (mqttEnabled != prevMqttEnabled) needRestartMQTT = true;
 
   // Form khong do password that ra HTML nua (tranh lo qua "/" von khong can dang nhap), nen
   // o day de trong = giu nguyen password cu - giong auth_pass.
