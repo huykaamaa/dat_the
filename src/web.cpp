@@ -421,6 +421,18 @@ void handleUpdateFinish() {
   }
 }
 
+// Reset mem board. Gui response TRUOC roi moi restart (giong handleUpdateFinish) - neu goi
+// ESP.restart() ngay thi trinh duyet chi thay ket noi bi cat, khong biet lenh da nhan hay chua.
+// Trang tu tai lai sau 12s: board can ~20-30s de len mang lai nen co the van phai F5 them.
+void handleReboot() {
+  if (!requireAuth()) return;
+  server.send(200, "text/html",
+    "<script>alert('Board dang khoi dong lai. Doi khoang 20-30 giay roi tai lai trang.');"
+    "setTimeout(function(){window.location.href='/';},12000);</script>");
+  delay(500); // cho response gui xong truoc khi reboot
+  ESP.restart();
+}
+
 void setupWeb() {
 
     server.on("/", handleRoot);
@@ -428,6 +440,7 @@ void setupWeb() {
     server.on("/test_relay", HTTP_POST, handleTestRelay);
     server.on("/test_iot", HTTP_POST, handleTestIot);
     server.on("/update", HTTP_POST, handleUpdateFinish, handleUpdateUpload);
+    server.on("/reboot", HTTP_POST, handleReboot);
 
     // /play va /stop doi trang thai vat ly cua phong (nhac dang chay giua game) nen phai gated
     // giong /test_relay. Dong thoi ep HTTP_POST: dang ky 2 tham so nhu truoc la HTTP_ANY, tuc
@@ -567,6 +580,6 @@ void loadConfig() {
   prefs.end();
 
   if (strcmp(authUser, "admin") == 0 && strcmp(authPass, "admin") == 0) {
-    LOG("AUTH: dang dung mac dinh admin/admin cho /save, /play, /stop, /test_relay, /test_iot, /update - doi qua Web UI");
+    LOG("AUTH: dang dung mac dinh admin/admin cho /save, /play, /stop, /test_relay, /test_iot, /update, /reboot - doi qua Web UI");
   }
 }

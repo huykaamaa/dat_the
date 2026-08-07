@@ -7,6 +7,9 @@ void handleTestRelay();
 void handleUpdateUpload();
 void handleUpdateFinish();
 
+// Reset mem board qua Web UI (ESP.restart()). Gated giong cac route doi trang thai khac.
+void handleReboot();
+
 // MQTT/OSC test: ban lan luot SENSOR_NUM vi tri ON roi SENSOR_NUM vi tri OFF (ported tu
 // gia_sach). Khong block loop() - updateTestSequence() duoc goi moi vong loop() trong main.cpp.
 void handleTestIot();
