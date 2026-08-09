@@ -16,4 +16,8 @@ void handleTestIot();
 void updateTestSequence();
 
 void loadConfig();
+// OTA tu URL da luu (NVS "ota_url"): 2 nut cung form - "Luu URL" chi ghi NVS, "Nap tu link"
+// ghi NVS roi dat otaUrlPending de otaUrlTick() trong loop() tai ve. Xem globals.h.
+void handleUpdateUrl();
+
 int saveConfig();

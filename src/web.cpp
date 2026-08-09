@@ -108,6 +108,14 @@ void handleData()
     data += "<br>";
   }
 
+  // Ma firmware DANG CHAY, tinh tu chinh anh da nap (xem fwIdInit() / globals.h). De o day chu
+  // khong o trang cau hinh vi day la khoi duy nhat tu lam moi: sau khi OTA xong va board reboot,
+  // so nay tu nhay sang gia tri moi ma khong can F5 - ma OTA tu URL lai khong bao gi khi thanh
+  // cong nen day la cach xac nhan nhanh nhat.
+  data += "<div style='margin-top:8px;font-size:12px;color:#64748b'>FW <b>";
+  data += fwId;
+  data += "</b> &middot; " + String(fwSize) + " bytes</div>";
+
   server.send(200, "text/html", data);
 }
 
@@ -424,6 +432,63 @@ void handleUpdateFinish() {
 // Reset mem board. Gui response TRUOC roi moi restart (giong handleUpdateFinish) - neu goi
 // ESP.restart() ngay thi trinh duyet chi thay ket noi bi cat, khong biet lenh da nhan hay chua.
 // Trang tu tai lai sau 12s: board can ~20-30s de len mang lai nen co the van phai F5 them.
+void handleUpdateUrl() {
+  if (!requireAuth()) return;
+
+  String alertMsg;
+  bool urlOk = true;
+
+  if (server.hasArg("ota_url")) {
+    String v = server.arg("ota_url");
+    v.trim();
+
+    if (v.length() >= sizeof(otaUrl)) {
+      // Tu choi thay vi de strncpy cat cut: URL bi cat mat duoi se tro toi mot duong dan khac
+      // van hop le ve cu phap, va loi chi lo ra luc dang tai giua show.
+      alertMsg = "URL qua dai (toi da " + String((int)sizeof(otaUrl) - 1) + " ky tu) - khong luu";
+      urlOk = false;
+    } else if (v.length() > 0 && !v.startsWith("http://")) {
+      // https:// bi chan ngay o day thay vi de httpUpdate that bai luc tai - xem globals.h.
+      alertMsg = "URL phai bat dau bang http:// (khong ho tro https) - khong luu";
+      urlOk = false;
+    } else {
+      strncpy(otaUrl, v.c_str(), sizeof(otaUrl) - 1);
+      otaUrl[sizeof(otaUrl) - 1] = '\0';
+    }
+  }
+
+  if (urlOk) {
+    int saveFailCount = saveConfig();
+    if (saveFailCount == 0) {
+      alertMsg = "Da luu URL";
+    } else if (saveFailCount < 0) {
+      alertMsg = "Luu URL FAILED - NVS not accessible, check Serial log";
+      urlOk = false;
+    } else {
+      alertMsg = "Luu voi " + String(saveFailCount) + " loi - check Serial log";
+    }
+  }
+
+  // Chi nap khi bam dung nut "update" VA URL vua qua duoc kiem tra - bam nap ma URL bi tu choi
+  // thi se tai bang gia tri CU con nam trong RAM, tuong da doi ma thuc ra chua.
+  bool wantUpdate = urlOk && server.arg("act") == "update" && otaUrl[0] != '\0';
+
+  if (wantUpdate) {
+    otaUrlPending = true;
+    LOG(">>> OTA URL: da nhan lenh nap tu %s <<<", otaUrl);
+    alertMsg = "Dang tai firmware tu link. Board se tu khoi dong lai sau khoang 20-40 giay. "
+               "Xem Serial log neu that bai.";
+  }
+
+  String page = "<script>alert('" + alertMsg + "');";
+  // Doi lau hon han thoi gian tai + reboot roi moi quay ve, khong thi trang tu tai lai giua luc
+  // board dang ghi flash va bao loi mang lam nguoi dung tuong update hong.
+  page += wantUpdate ? "setTimeout(function(){window.location.href='/';},45000);"
+                     : "window.location.href='/';";
+  page += "</script>";
+  server.send(200, "text/html", page);
+}
+
 void handleReboot() {
   if (!requireAuth()) return;
   server.send(200, "text/html",
@@ -440,6 +505,7 @@ void setupWeb() {
     server.on("/test_relay", HTTP_POST, handleTestRelay);
     server.on("/test_iot", HTTP_POST, handleTestIot);
     server.on("/update", HTTP_POST, handleUpdateFinish, handleUpdateUpload);
+    server.on("/update_url", HTTP_POST, handleUpdateUrl);
     server.on("/reboot", HTTP_POST, handleReboot);
 
     // /play va /stop doi trang thai vat ly cua phong (nhac dang chay giua game) nen phai gated
@@ -491,6 +557,7 @@ int saveConfig() {
   if (!prefs.putBool(NVS_KEY("static_first"), staticFirst)) fails++;
   if (!prefs.putString("auth_user", authUser)) fails++;
   if (!prefs.putString("auth_pass", authPass)) fails++;
+  if (!prefs.putString(NVS_KEY("ota_url"), otaUrl)) fails++;
 
   if (!prefs.putString(NVS_KEY("mqtt_ip"), mqttServer)) fails++;
   if (!prefs.putUShort(NVS_KEY("mqtt_port"), mqttPort)) fails++;
@@ -548,6 +615,8 @@ void loadConfig() {
   authUser[sizeof(authUser) - 1] = '\0';
   strncpy(authPass, prefs.getString("auth_pass", authPass).c_str(), sizeof(authPass) - 1);
   authPass[sizeof(authPass) - 1] = '\0';
+  strncpy(otaUrl, prefs.getString(NVS_KEY("ota_url"), "").c_str(), sizeof(otaUrl) - 1);
+  otaUrl[sizeof(otaUrl) - 1] = '\0';
 
   strncpy(mqttServer, prefs.getString(NVS_KEY("mqtt_ip"), mqttServer).c_str(), sizeof(mqttServer) - 1);
   mqttServer[sizeof(mqttServer) - 1] = '\0';
