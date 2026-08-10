@@ -238,12 +238,12 @@ void handleRoot()
   // bang View Source. De trong = giu nguyen, giong cach auth_pass o tab Cau hinh.
   html += "<div class='field'><label>Pass</label><input type='password' name='mqtt_pass' placeholder='(giữ nguyên nếu để trống)'></div>";
   html += "</div>";
-  html += "<div class='single'><label>Topic gốc</label><input name='mqtt_topic' value='" + htmlEscape(mqttTopic) + "'></div>";
+  html += "<div class='single'><label>Topic</label><input name='mqtt_topic' value='" + htmlEscape(mqttTopic) + "'></div>";
   html += "<div class='row'>";
-  html += "<div class='field'><label>Giá trị khi CÓ</label><input name='mqtt_full' value='" + htmlEscape(mqttFullValue) + "'></div>";
-  html += "<div class='field'><label>Giá trị khi TRỐNG</label><input name='mqtt_missing' value='" + htmlEscape(mqttMissingValue) + "'></div>";
+  html += "<div class='field'><label>Giá trị khi ĐỦ thẻ</label><input name='mqtt_on' value='" + htmlEscape(mqttOnValue) + "'></div>";
+  html += "<div class='field'><label>Giá trị khi CHƯA đủ</label><input name='mqtt_off' value='" + htmlEscape(mqttOffValue) + "'></div>";
   html += "</div>";
-  html += "<div class='note'>Mỗi vị trí (thẻ) tự publish vào &lt;topic gốc&gt;/&lt;1.." + String(SENSOR_NUM) + "&gt;, payload chỉ là giá trị. Ví dụ topic gốc '" + htmlEscape(mqttTopic) + "' → vị trí 3 publish vào '" + htmlEscape(mqttTopic) + "/3'. Ô Pass để trống nghĩa là giữ nguyên mật khẩu đang dùng.</div>";
+  html += "<div class='note'>MQTT chỉ publish <b>một message duy nhất</b> vào đúng topic này (không có hậu tố /1.." + String(SENSOR_NUM) + "): đủ thẻ → '" + htmlEscape(mqttOnValue) + "', chưa đủ → '" + htmlEscape(mqttOffValue) + "'. \"Đủ thẻ\" tính theo đúng điều kiện đang bật/tắt nhạc, tức có tính ô tick Enable và chế độ AND/OR ở tab Cấu hình. OSC thì <b>vẫn báo riêng từng vị trí</b> như cũ. Ô Pass để trống nghĩa là giữ nguyên mật khẩu đang dùng.</div>";
   html += "</div>";
 
   html += "<div class='panel'>";
@@ -278,11 +278,9 @@ void handleRoot()
   //================ TEST MQTT/OSC ================
 
   html += "<div class='panel'>";
-  html += "<h3>Test MQTT/OSC</h3>";
-  // Mot nut duy nhat: chuoi test goi triggerSensor(), von ban CA MQTT LAN OSC cung luc, nen
-  // 2 nut rieng truoc day chi gay hieu nham la test duoc tung kenh mot.
-  html += "<form action='/test_iot' method='POST'><input class='btn' type='submit' value='Test MQTT + OSC (1→" + String(SENSOR_NUM) + " ON, 1→" + String(SENSOR_NUM) + " OFF)'></form>";
-  html += "<div class='note'>Bắn lần lượt " + String(SENSOR_NUM) + " vị trí sang CÓ, rồi " + String(SENSOR_NUM) + " vị trí sang TRỐNG, cách nhau 1 giây, sau đó tự gửi lại trạng thái thật. MQTT và OSC đi cùng nhau, không tách riêng được.</div>";
+  html += "<h3>Test MQTT</h3>";
+  html += "<form action='/test_iot' method='POST'><input class='btn' type='submit' value='Test MQTT (ON → OFF)'></form>";
+  html += "<div class='note'>Bắn topic tổng giá trị '" + htmlEscape(mqttOnValue) + "', 1 giây sau bắn '" + htmlEscape(mqttOffValue) + "', rồi tự gửi lại trạng thái thật. Bước cuối cũng gửi lại OSC cho cả " + String(SENSOR_NUM) + " vị trí ở trạng thái thật.</div>";
   html += "</div>";
 
   //================ FIRMWARE UPDATE (OTA) ================

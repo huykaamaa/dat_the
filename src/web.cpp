@@ -69,8 +69,11 @@ void handleData()
   // vien dan de doi config sang char[].
   data.reserve(1024);
 
-  data += "<span style='font-size:12px;color:#94a3b8'>Firmware build: " __DATE__ " " __TIME__ "</span><br>";
-
+  // BO dong "Firmware build: __DATE__ __TIME__" (2026-08-10). PlatformIO chi bien dich lai file
+  // nao thay doi, ma macro do nam trong web.cpp - lan build nao chi sua main.cpp/html.cpp thi
+  // web.cpp khong duoc dich lai va dau thoi gian DUNG YEN, trong khi firmware thi da doi. No
+  // noi doi dung luc duy nhat nguoi ta can no: kiem tra xem OTA da an chua. Dong "FW <md5>" o
+  // cuoi ham nay doc tu chinh anh dang chay nen khong bao gio sai - dung dong do.
   data += "<b>MQTT:</b> ";
   if (!mqttEnabled) data += "<span style='color:gray'>DISABLED</span>";
   else data += mqttConnected ? "<span style='color:green'>CONNECTED</span>" : "<span style='color:red'>DISCONNECTED</span>";
@@ -218,8 +221,8 @@ void handleSave() {
   if (saveStringArg("mqtt_pass", mqttPass, sizeof(mqttPass))) needRestartMQTT = true;
 
   saveStringArg("mqtt_topic", mqttTopic, sizeof(mqttTopic));
-  saveStringArg("mqtt_full", mqttFullValue, sizeof(mqttFullValue));
-  saveStringArg("mqtt_missing", mqttMissingValue, sizeof(mqttMissingValue));
+  saveStringArg("mqtt_on", mqttOnValue, sizeof(mqttOnValue));
+  saveStringArg("mqtt_off", mqttOffValue, sizeof(mqttOffValue));
 
   // ================ OSC (ported tu gia_sach) ================
 
@@ -312,11 +315,15 @@ void handleTestRelay() {
   server.send(302, "text/plain", "");
 }
 
-// Test MQTT/OSC: ban lan luot vi tri 1..SENSOR_NUM ON (CO) truoc, roi 1..SENSOR_NUM OFF
-// (TRONG), cach nhau 1s/buoc - tong SENSOR_NUM*2 buoc. Dung millis(), KHONG dung delay(), de
-// khong block loop() (ported tu gia_sach ban goc).
+// Test MQTT: ban message TONG "on", doi 1s, ban "off", roi tra ve trang thai that - dung 2
+// buoc. Dung millis(), KHONG dung delay(), de khong block loop() (ported tu gia_sach ban goc).
+//
+// 2026-08-10: truoc day chuoi nay quet lan luot SENSOR_NUM vi tri ON roi SENSOR_NUM vi tri OFF
+// (SENSOR_NUM*2 buoc). Bo di vi MQTT khong con theo vi tri nua - quet vi tri chi con kiem duoc
+// OSC, ma lai KHONG kiem duoc dung cai kenh moi. Doi lai: khong con cach nao bat OSC ban thu
+// tung vi tri mot; buoc resync cuoi van gui OSC cho ca SENSOR_NUM vi tri o trang thai THAT.
 #define TEST_SEQ_INTERVAL_MS 1000UL
-#define TEST_SEQ_TOTAL_STEPS (SENSOR_NUM * 2)
+#define TEST_SEQ_TOTAL_STEPS 2
 
 static bool testSeqActive = false;
 static int testSeqIndex = 0;
@@ -332,27 +339,24 @@ void updateTestSequence() {
   if (!testSeqActive) return;
   if ((long)(testSeqNextMs - millis()) > 0) return; // an toan qua vong lap millis()
 
-  // Buoc phu cuoi cung: tra ben nhan ve trang thai THAT. Chuoi Test goi thang triggerSensor()
-  // nen khong dung vao lastSentState[] - sau buoc "OFF" ben nhan tin ca SENSOR_NUM vi tri deu
-  // TRONG, con thiet bi van nghi minh da gui trang thai cu nen se KHONG tu gui lai. Neu khong
-  // resync o day thi lech keo dai toi lan doi trang thai vat ly ke tiep (heartbeat co the dang
-  // tat = 0).
+  // Buoc phu cuoi cung: tra ben nhan ve trang thai THAT. Chuoi Test goi thang
+  // triggerAggregate() nen KHONG dung vao stableState - sau buoc "off" ben nhan tin ca phong
+  // dang trong, con thiet bi van nghi minh da gui trang thai cu nen se KHONG tu gui lai. Neu
+  // khong resync o day thi lech keo dai toi lan doi trang thai vat ly ke tiep (heartbeat co
+  // the dang tat = 0). Day cung la buoc DUY NHAT con gui OSC cho ca SENSOR_NUM vi tri.
   if (testSeqIndex >= TEST_SEQ_TOTAL_STEPS) {
     resyncAllPositions();
     testSeqActive = false;
     return;
   }
 
-  int pos = testSeqIndex % SENSOR_NUM;      // 0..5, lap lai o nua sau
-  bool state = testSeqIndex < SENSOR_NUM;   // nua dau: ON (CO), nua sau: OFF (TRONG)
-  triggerSensor(pos, state);
+  triggerAggregate(testSeqIndex == 0);  // buoc 0 = "on", buoc 1 = "off"
   testSeqIndex++;
   testSeqNextMs = millis() + TEST_SEQ_INTERVAL_MS;
 }
 
-// MOT route duy nhat cho ca 2 kenh. Truoc day co /test_mqtt va /test_osc rieng nhung than
-// ham y het nhau, va chuoi test goi triggerSensor() - von ban CA MQTT LAN OSC - nen bam
-// "Test OSC" van publish MQTT. Hai nut rieng chi gay hieu nham la test duoc tung kenh mot.
+// MOT route duy nhat. Truoc day co /test_mqtt va /test_osc rieng nhung than ham y het nhau
+// nen 2 nut chi gay hieu nham la test duoc tung kenh mot.
 void handleTestIot() {
   if (!requireAuth()) return;
   startTestSequence();
@@ -567,8 +571,12 @@ int saveConfig() {
   if (prefs.putString(NVS_KEY("mqtt_user"), mqttUser) == 0 && strlen(mqttUser) > 0) fails++;
   if (prefs.putString(NVS_KEY("mqtt_pass"), mqttPass) == 0 && strlen(mqttPass) > 0) fails++;
   if (!prefs.putString(NVS_KEY("mqtt_topic"), mqttTopic)) fails++;
-  if (!prefs.putString(NVS_KEY("mqtt_full"), mqttFullValue)) fails++;
-  if (!prefs.putString(NVS_KEY("mqtt_missing"), mqttMissingValue)) fails++;
+  // Key MOI, khong tai dung "mqtt_full"/"mqtt_missing" cu: 2 key do tung mang nghia "gia tri
+  // cua TUNG vi tri", gio y nghia da khac han (du the / chua du ca phong). Dung lai ten cu thi
+  // may da chay se im lang keo gia tri cu ("FULL"/"MISSING") vao vai tro moi. 2 key cu con nam
+  // trong NVS nhung khong ai doc - vo hai.
+  if (!prefs.putString(NVS_KEY("mqtt_on"), mqttOnValue)) fails++;
+  if (!prefs.putString(NVS_KEY("mqtt_off"), mqttOffValue)) fails++;
 
   if (!prefs.putBool(NVS_KEY("osc_en"), oscEnabled)) fails++;
   if (!prefs.putString(NVS_KEY("osc_ip"), oscIp)) fails++;
@@ -628,10 +636,10 @@ void loadConfig() {
   mqttPass[sizeof(mqttPass) - 1] = '\0';
   strncpy(mqttTopic, prefs.getString(NVS_KEY("mqtt_topic"), mqttTopic).c_str(), sizeof(mqttTopic) - 1);
   mqttTopic[sizeof(mqttTopic) - 1] = '\0';
-  strncpy(mqttFullValue, prefs.getString(NVS_KEY("mqtt_full"), mqttFullValue).c_str(), sizeof(mqttFullValue) - 1);
-  mqttFullValue[sizeof(mqttFullValue) - 1] = '\0';
-  strncpy(mqttMissingValue, prefs.getString(NVS_KEY("mqtt_missing"), mqttMissingValue).c_str(), sizeof(mqttMissingValue) - 1);
-  mqttMissingValue[sizeof(mqttMissingValue) - 1] = '\0';
+  strncpy(mqttOnValue, prefs.getString(NVS_KEY("mqtt_on"), mqttOnValue).c_str(), sizeof(mqttOnValue) - 1);
+  mqttOnValue[sizeof(mqttOnValue) - 1] = '\0';
+  strncpy(mqttOffValue, prefs.getString(NVS_KEY("mqtt_off"), mqttOffValue).c_str(), sizeof(mqttOffValue) - 1);
+  mqttOffValue[sizeof(mqttOffValue) - 1] = '\0';
 
   oscEnabled = prefs.getBool(NVS_KEY("osc_en"), oscEnabled);
   strncpy(oscIp, prefs.getString(NVS_KEY("osc_ip"), oscIp).c_str(), sizeof(oscIp) - 1);

@@ -53,9 +53,12 @@ char mqttUser[32]         = "";
 // Mac dinh RONG - khong hardcode mat khau that vao source (source nam trong git). Nhap 1 lan
 // qua Web UI, sau do no nam trong NVS va song qua cac lan nap firmware moi.
 char mqttPass[32]         = "";
-char mqttTopic[64]        = "datthe/vitri"; // moi vi tri se publish vao "<mqttTopic>/<1..SENSOR_NUM>"
-char mqttFullValue[32]    = "FULL";
-char mqttMissingValue[32] = "MISSING";
+// Topic DUY NHAT cua ca phong (khong hau to /<id> nua - xem globals.h). Doi default o day chi
+// anh huong may chua tung Save; may da chay van giu "datthe/vitri" trong NVS va se publish
+// thang vao do - doi tren Web UI neu muon.
+char mqttTopic[64]        = "datthe/du_the";
+char mqttOnValue[32]      = "on";
+char mqttOffValue[32]     = "off";
 
 // OSC
 bool oscEnabled = false;
@@ -161,7 +164,7 @@ static void checkSensors()
     bool effectiveState = relayState[i] && sensorEnable[i];
     if (effectiveState != lastSentState[i]) {
       lastSentState[i] = effectiveState;
-      triggerSensor(i, effectiveState);
+      triggerPositionOsc(i, effectiveState);
     }
   }
 
@@ -174,6 +177,11 @@ static void checkSensors()
   if (millis() - debounceStart >= debounceTime) {
       if (stableState != triggerState) {
           stableState = triggerState;
+          // MQTT tong ban o DUNG day, cung nhanh voi playMusic()/stopMusic() - khong dem lai
+          // dieu kien "du the" o cho khac. Neu tach ra, chi can mot ben quen tinh tick Enable
+          // hoac quen debounce la nhac va cue MQTT noi hai chuyen khac nhau, ma kieu lech do
+          // rat kho truy vi rieng le nhin cai nao cung dung.
+          triggerAggregate(stableState);
           if (stableState) {
               playMusic();
           } else {
@@ -189,8 +197,12 @@ static void checkSensors()
 // web.cpp.
 void resyncAllPositions() {
   for (int i = 0; i < SENSOR_NUM; i++) {
-    triggerSensor(i, lastSentState[i]);
+    triggerPositionOsc(i, lastSentState[i]);
   }
+  // Ban lai ca message MQTT tong. Bo dong nay thi heartbeat chi con nhac lai OSC, con ben nhan
+  // MQTT ket o gia tri cu cho toi lan DOI trang thai vat ly ke tiep - dung cai ma heartbeat
+  // sinh ra de tranh, va gio no la kenh MQTT DUY NHAT nen mat la mat het.
+  triggerAggregate(stableState);
 }
 
 // ======================================================================

@@ -89,8 +89,15 @@ extern bool diagApActive;
 extern unsigned long diagApStartMs;
 
 // MQTT - ported tu gia_sach (ban goc, truoc khi rut tu 6 xuong 2 sensor), tu than gia_sach
-// lay hang tang MQTT client/OSC encode nay tu can_tim. Moi vi tri (the) publish rieng vao
-// "<mqttTopic>/<1..SENSOR_NUM>".
+// lay hang tang MQTT client/OSC encode nay tu can_tim.
+//
+// 2026-08-10: MQTT chi con DUNG MOT message TONG, publish thang vao mqttTopic (khong hau to):
+// du the -> mqttOnValue, chua du -> mqttOffValue. Truoc do moi vi tri publish rieng vao
+// "<mqttTopic>/<1..SENSOR_NUM>" - da BO han. OSC KHONG doi, van bao rieng tung vi tri.
+//
+// "Du the" lay dung bien stableState trong checkSensors() - chinh cai dang bat/tat nhac, da
+// qua debounceTime va da tinh ca tick Enable lan che do AND/OR. Khong tu dem lai o cho khac,
+// neu khong se co ngay cue MQTT va nhac noi hai chuyen khac nhau.
 extern esp_mqtt_client_handle_t mqtt;
 extern bool mqttConnected;
 extern bool mqttEnabled;
@@ -99,8 +106,8 @@ extern uint16_t mqttPort;
 extern char mqttUser[32];
 extern char mqttPass[32];
 extern char mqttTopic[64];
-extern char mqttFullValue[32];
-extern char mqttMissingValue[32];
+extern char mqttOnValue[32];   // payload khi DU the (mac dinh "on")
+extern char mqttOffValue[32];  // payload khi CHUA du the (mac dinh "off")
 
 // OSC - CO va TRONG la 2 message OSC hoan toan tach biet (dia chi rieng + int rieng).
 // "{id}" trong 2 dia chi duoc thay bang vi tri (1..SENSOR_NUM) truoc khi gui.

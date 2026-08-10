@@ -75,7 +75,7 @@ void mqttInit() {
   mqttConnected = false;
 
   // KHONG chan theo mqttEnabled o day: bo tick "Enable MQTT" chi chan publish (xem
-  // triggerSensor()), client van ket noi toi broker nhu binh thuong.
+  // triggerAggregate()), client van ket noi toi broker nhu binh thuong.
   if (strlen(mqttServer) == 0) {
     LOG("MQTT: dia chi broker rong - khong khoi tao client");
     return;
@@ -107,21 +107,31 @@ void mqttInit() {
   }
 }
 
-// Bao trang thai RIENG tung vi tri - moi vi tri 1 topic MQTT rieng "<mqttTopic>/<id>",
-// OSC dung 2 dia chi rieng (CO/TRONG), id chen vao dia chi qua "{id}".
-void triggerSensor(int id, bool state) {
-  const char *value = state ? mqttFullValue : mqttMissingValue;
+// Bao trang thai RIENG tung vi tri - CHI CON OSC (2 dia chi rieng CO/TRONG, id chen vao dia
+// chi qua "{id}"). Truoc 2026-08-10 ham nay con publish MQTT vao "<mqttTopic>/<id>"; gio MQTT
+// chi con 1 message tong, xem triggerAggregate().
+void triggerPositionOsc(int id, bool state) {
+  sendOscPosition(id + 1, state);
+  LOG("The %d = %s (OSC)", id + 1, state ? "CO" : "TRONG");
+}
+
+// Message MQTT TONG. Publish thang vao mqttTopic, KHONG hau to "/<id>" - day la ca phong "du
+// the / chua du", khong phai tung vi tri.
+//
+// retain = true (tham so cuoi): ben nhan bat len giua chung van doc duoc trang thai hien tai
+// ngay lap tuc thay vi phai doi lan doi trang thai ke tiep. Giu nguyen thoi quen cua ban
+// per-vi-tri truoc day.
+void triggerAggregate(bool on) {
+  const char *value = on ? mqttOnValue : mqttOffValue;
 
   if (mqttEnabled) {
     if (mqtt && mqttConnected) {
       // enqueue() khong block (khac publish() co the treo loop() khi broker dang reconnect)
-      String topic = String(mqttTopic) + "/" + String(id + 1);
-      esp_mqtt_client_enqueue(mqtt, topic.c_str(), value, 0, 0, 0, true);
+      esp_mqtt_client_enqueue(mqtt, mqttTopic, value, 0, 0, 0, true);
     } else {
       LOG("MQTT publish skipped: not connected/initialized");
     }
   }
-  sendOscPosition(id + 1, state);
 
-  LOG("The %d = %s", id + 1, value);
+  LOG("MQTT tong: %s = %s", mqttTopic, value);
 }
