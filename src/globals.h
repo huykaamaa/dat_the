@@ -136,6 +136,26 @@ extern uint32_t debounceTime;      // debounce cho trigger AND/OR (play/stop nha
 extern uint32_t debounceTimeRelay; // debounce cho tung relay/vi tri (dung chung voi MQTT/OSC)
 extern bool triggerOR;
 
+// Bao nhieu THE phai RUT RA thi moi tat (nhac + MQTT "off"). Chi co nghia o che do AND.
+//
+// 2026-08-10: may trang thai chay kieu hysteresis, nguong vao va nguong ra KHAC nhau (xem
+// checkSensors() trong main.cpp):
+//
+//   dang TAT -> BAT : phai DU het the, tuc tat ca sensor duoc tick deu co the (khong doi duoc)
+//   dang BAT -> TAT : phai rut ra >= cardOffThreshold the
+//   o giua          : GIU NGUYEN trang thai dang co
+//
+// Vung dem o giua la muc dich chinh: mo cue thi doi du bo, nhung khi show dang chay thi mot the
+// bi xe dich/nhay tin hieu khong cat ngang nhac. = 1 cho ra dung hanh vi cu (rut 1 the la tat).
+//
+// KHONG ap dung o che do OR: OR bat khi co >= 1 the, neu lai tat theo "so the rut ra" thi hai
+// dieu kien mau thuan nhau va trang thai se dao qua dao lai moi vong loop (vd 5 the, dang cam 1:
+// dieu kien BAT thoa VA dieu kien TAT cung thoa). Che do OR giu nguyen: het the moi tat.
+//
+// Kep theo so sensor dang tick - de nguong 5 ma chi tick 3 thi khong bao gio rut du 5, ket BAT
+// vinh vien. Hop le 1..SENSOR_NUM, cau hinh qua Web UI, luu NVS key "off_thresh".
+extern int cardOffThreshold;
+
 // Pulses relayPins[id] ON for a short window regardless of sensor state, for the Web UI's
 // per-relay "Test" buttons. Defined in main.cpp (owns relayState/relayTestUntil), called
 // from web.cpp's handleTestRelay() - same cross-file-function-declared-in-globals.h

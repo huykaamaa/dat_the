@@ -168,6 +168,12 @@ void handleRoot()
   html += "> All Triggers (AND)</label>";
   html += "</div>";
   html += "<div class='note'>Chỉ sensor được tick mới kick relay tương ứng và mới tính vào điều kiện AND/OR. Nút Test bật thử relay ~2 giây bất kể có tick hay không.</div>";
+  html += "<div class='single'>";
+  html += "<label>Số thẻ rút ra thì TẮT nhạc + MQTT (1-" + String(SENSOR_NUM) + ")</label>";
+  html += "<input name='off_thresh' value='" + String(cardOffThreshold) + "'>";
+  html += "</div>";
+  html += "<div class='note'><b>Bật:</b> phải đủ HẾT thẻ - tức tất cả sensor được tick đều có thẻ, không cấu hình được. <b>Tắt:</b> khi số thẻ rút ra đạt con số trên. Ở giữa thì giữ nguyên, nên đặt 2 nghĩa là \"đủ bộ mới chạy, nhưng 1 thẻ xê dịch/nhiễu tín hiệu chưa cắt nhạc\". Đặt 1 = không có vùng đệm, rút 1 thẻ là tắt ngay.</div>";
+  html += "<div class='note'>Chỉ áp dụng ở chế độ <b>AND</b>. Chế độ OR giữ nguyên: có ≥1 thẻ là bật, hết thẻ mới tắt - vì nếu OR mà cũng tắt theo số thẻ rút ra thì hai điều kiện mâu thuẫn nhau và trạng thái sẽ đảo liên tục. Ngưỡng tự hạ xuống bằng số sensor đang tick nếu đặt lớn hơn.</div>";
   html += "</div>";
 
   //================ ADMIN AUTH ================

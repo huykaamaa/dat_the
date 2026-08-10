@@ -165,6 +165,15 @@ void handleSave() {
   if (server.hasArg("logic"))
       triggerOR = (server.arg("logic") == "or");
 
+  // Reject + bao len UI thay vi clamp am tham: day la con so quyet dinh truc tiep luc nao cat
+  // nhac giua show, go nham ma bi lam tron lang le thi operator tuong da doi duoc.
+  bool offThreshInvalid = false;
+  if (server.hasArg("off_thresh")) {
+    long v;
+    if (parseValidatedLong(server.arg("off_thresh"), 1, SENSOR_NUM, v)) cardOffThreshold = (int)v;
+    else offThreshInvalid = true;
+  }
+
   // WiFi - de trong = giu nguyen (giong cach auth_pass xu ly ben duoi), tranh vo tinh xoa
   // SSID/pass dang dung chi vi form submit thieu field.
   saveStringArg("ssid", wifiSSID, sizeof(wifiSSID));
@@ -297,6 +306,7 @@ void handleSave() {
   if (oscPortInvalid) alertMsg += " (OSC port rejected: must be 1-65535)";
   if (staticAddrInvalid) alertMsg += " (Static IP/gateway/netmask rejected: not a valid IPv4 address)";
   if (timingInvalid) alertMsg += " (Fade/Debounce rejected: must be a whole number 0-600000 ms)";
+  if (offThreshInvalid) alertMsg += " (So the rut ra rejected: must be 1-" + String(SENSOR_NUM) + ")";
 
   server.send(200, "text/html", "<script>alert('" + alertMsg + "');window.location.href='/';</script>");
 }
@@ -548,6 +558,7 @@ int saveConfig() {
   if (!prefs.putUInt("debounce", debounceTime)) fails++;
   if (!prefs.putUInt("debounceRelay", debounceTimeRelay)) fails++;
   if (!prefs.putBool("triggerOR", triggerOR)) fails++;
+  if (!prefs.putInt(NVS_KEY("off_thresh"), cardOffThreshold)) fails++;
 
   for (int i = 0; i < SENSOR_NUM; i++) {
     if (!prefs.putBool(("sen" + String(i)).c_str(), sensorEnable[i])) fails++;
@@ -603,6 +614,13 @@ void loadConfig() {
   debounceTime = prefs.getUInt("debounce", debounceTime);
   debounceTimeRelay = prefs.getUInt("debounceRelay", debounceTimeRelay);
   triggerOR = prefs.getBool("triggerOR", triggerOR);
+  cardOffThreshold = prefs.getInt(NVS_KEY("off_thresh"), cardOffThreshold);
+  if (cardOffThreshold < 1 || cardOffThreshold > SENSOR_NUM) {
+    // NVS hong hoac du lieu tu ban firmware khac - ve mac dinh thay vi de gia tri vo nghia lam
+    // hong logic bat/tat am tham (vd 0 se khien dieu kien TAT thoa ngay ca khi du the).
+    LOG("NVS: off_thresh = %d ngoai khoang 1..%d - dat lai ve 1", cardOffThreshold, SENSOR_NUM);
+    cardOffThreshold = 1;
+  }
 
   for (int i = 0; i < SENSOR_NUM; i++) {
     sensorEnable[i] = prefs.getBool(("sen" + String(i)).c_str(), true);

@@ -113,6 +113,7 @@ static bool stableState = false;    // trạng thái sau debounce
 static uint32_t debounceStart = 0;
 
 bool triggerOR = false;   // false = AND, true = OR
+int cardOffThreshold = 1; // Xem globals.h. 1 = hanh vi cu (rut 1 the la tat)
 
 void triggerRelayTest(int id)
 {
@@ -129,7 +130,8 @@ void triggerRelayTest(int id)
 // AND/OR trigger o tren - la 1 kenh bao cao song song, doc lap voi play/stop nhac.
 static void checkSensors()
 {
-  bool trigger = triggerOR ? false : true;
+  int enabledCount = 0;   // so sensor duoc tick Enable
+  int presentCount = 0;   // trong so do, bao nhieu cai dang co the
 
   for (int i = 0; i < SENSOR_NUM; i++) {
     //---------------- Relay ----------------
@@ -152,10 +154,8 @@ static void checkSensors()
     digitalWrite(relayPins[i], relayOutput[i] ? RELAY_ON : RELAY_OFF);
 
     if (sensorEnable[i]) {
-        if (triggerOR)
-            trigger |= gpioDetect;
-        else
-            trigger &= gpioDetect;
+        enabledCount++;
+        if (gpioDetect) presentCount++;
     }
 
     // Bao MQTT/OSC khi trang thai THUC TE (co tinh enable, KHONG tinh test-pulse) doi - tuc
@@ -167,6 +167,40 @@ static void checkSensors()
       triggerPositionOsc(i, effectiveState);
     }
   }
+
+  //================ Dieu kien BAT / TAT =================
+
+  int removedCount = enabledCount - presentCount;
+
+  // Kep nguong theo so sensor dang tick: de nguyen 5 ma chi tick 3 thi khong bao gio rut du 5,
+  // ket BAT vinh vien.
+  int effOffThreshold = cardOffThreshold;
+  if (effOffThreshold > enabledCount) {
+    effOffThreshold = enabledCount;
+  }
+
+  bool trigger;
+  if (enabledCount == 0) {
+    // Khong tick con nao = khong bao gio BAT. Truoc day che do AND khoi tao trigger = true roi
+    // khong co vong lap nao ha xuong, nen bo tick het ca 5 vi tri lai lam NHAC TU CHAY va MQTT
+    // bao "on" trong khi khong con cam bien nao dieu khien.
+    trigger = false;
+  } else if (triggerOR) {
+    // OR giu nguyen hanh vi cu, KHONG ap nguong "so the rut ra" - xem globals.h: hai dieu kien
+    // se mau thuan nhau va trang thai dao qua dao lai moi vong loop.
+    trigger = (presentCount > 0);
+  } else if (!stableState) {
+    // AND, dang TAT -> BAT: phai DU HET the (dung bang so sensor duoc tick).
+    trigger = (removedCount == 0);
+  } else {
+    // AND, dang BAT -> TAT: phai rut ra du nguong. O giua thi bieu thuc nay van cho true nen
+    // trang thai giu nguyen - do chinh la vung dem.
+    trigger = (removedCount < effOffThreshold);
+  }
+
+  // Moc hysteresis la stableState (trang thai DANG co hieu luc, dang chay nhac), KHONG phai
+  // triggerState: triggerState con dao dong trong lua cho debounceTime, lay no lam moc thi
+  // nguong tu nhay qua lai giua "vao" va "ra" ngay trong mot lan chuyen.
 
   //================ Debounce =================
 
