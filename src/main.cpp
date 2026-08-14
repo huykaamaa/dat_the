@@ -378,6 +378,21 @@ static bool connectWiFiAttempt(bool useStatic, bool verifyGateway, const char *s
     Serial.print("Connected! IP: ");
     Serial.println(WiFi.localIP());
 
+    // TAT modem sleep. Mac dinh cua core Arduino tren ESP32-S3 la WIFI_PS_MIN_MODEM (xem
+    // WiFiGeneric.cpp: chi rieng ESP32-S2 mac dinh WIFI_PS_NONE), tuc STA tat phan thu giua cac
+    // beacon va chi tinh day theo chu ky DTIM cua router - thuong 100-300ms. Goi gui toi board
+    // bi router giu trong bo dem cho toi nhip tinh ke tiep, nen ping nhay giua ~3ms va vai tram
+    // ms DU SONG RAT KHOE. Do la ly do "RSSI -60 ma ping cao".
+    //
+    // Dat o day (sau khi associate) vi setSleep() chi goi esp_wifi_set_ps() khi STA da started.
+    // Gia tri duoc luu vao bien static cua core nen no song qua cac lan doi mode sau nay - ke ca
+    // luc diag AP tat va mode quay ve WIFI_STA.
+    //
+    // Gia phai tra: dong tieu thu trung binh tang ~30-40mA va board am hon. Thiet bi nay cam
+    // dien luoi va nam trong tu nen khong dang ke; doi lai Web UI het giat va ping tro thanh
+    // mot tin hieu chan doan dung duoc tu xa.
+    WiFi.setSleep(false);
+
     // Associate xong KHONG co nghia bo IP dung - xem gatewayReachable(). Ping gateway de xac
     // minh truoc khi bao thanh cong.
     if (useStatic && verifyGateway)
