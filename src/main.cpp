@@ -14,6 +14,23 @@ const char *apPASS = "12121212";
 char wifiSSID[32] = "doaz";
 char wifiPASS[64] = "zxcvzxcv";
 
+// SSID du phong nhung san trong code. Chi duoc thu SAU KHI mang cau hinh tren Web UI da that
+// bai het cac buoc cua no - day la luoi cuoi, khong phai lua chon song song.
+//
+// Ca 3 mang deu di qua CUNG mot luong (ke ca "uu tien IP tinh") vi day khong phai 3 mang khac
+// nhau, ma la 3 access point cua CUNG mot mang - bo IP tinh van dung nguyen gia tri du board
+// bam vao AP nao. Neu sau nay them mot SSID thuoc mang khac that su thi phai xu ly rieng: ep IP
+// tinh cua mang nay len mang do se cho ra mot dia chi sai dai, khong ai toi duoc.
+//
+// Dia chi thuc te dang dung hien tren dashboard va tren ten diag AP, nen khi board bam sang AP
+// du phong thi van tra ra IP de tim.
+struct WifiCred { const char *ssid; const char *pass; };
+static const WifiCred wifiBackups[] = {
+    {"lamaz", "zxcvzxcv"},
+    {"Tenda_392EA0", "zxcvzxcv"},
+};
+static const size_t wifiBackupCount = sizeof(wifiBackups) / sizeof(wifiBackups[0]);
+
 // F19-style static-IP fallback (ported from phòng Cân Tim): same 192.168.99.0/24 as this
 // room's old OSC target default (192.168.99.187) and Cân Tim's own defaults (.199 MQTT
 // broker .225) - .198 is a judgment call to avoid colliding with those, not a confirmed
@@ -306,9 +323,11 @@ static bool gatewayReachable(IPAddress gw)
 // KHONG bat o nhanh fallback cuoi (DHCP da chet roi): o do IP tinh la hy vong cuoi cung, ma
 // router chan ICMP thi ta se vut bo mot bo IP co the dang dung va roi han xuong AP-only, mat
 // luon MQTT/OSC. Danh doi khong dang.
-static bool connectWiFiAttempt(bool useStatic, bool verifyGateway)
+// ssid/pass truyen vao thay vi doc thang wifiSSID/wifiPASS: cung ham nay duoc dung cho ca mang
+// cau hinh tren Web UI lan cac SSID du phong nhung trong code (xem wifiBackups).
+static bool connectWiFiAttempt(bool useStatic, bool verifyGateway, const char *ssid, const char *pass)
 {
-    if (strlen(wifiSSID) == 0)
+    if (ssid == nullptr || strlen(ssid) == 0)
         return false;
 
     WiFi.disconnect(true, false);
@@ -335,9 +354,9 @@ static bool connectWiFiAttempt(bool useStatic, bool verifyGateway)
     }
 
     WiFi.mode(WIFI_STA);
-    WiFi.begin(wifiSSID, wifiPASS);
+    WiFi.begin(ssid, pass);
 
-    Serial.print("Connecting");
+    Serial.printf("Connecting to '%s'", ssid);
 
     unsigned long start = millis();
     unsigned long timeout = useStatic ? 10000 : 20000;
@@ -378,11 +397,40 @@ static bool connectWiFiAttempt(bool useStatic, bool verifyGateway)
     return true;
 }
 
-// Tries DHCP first; if that doesn't get an IP within timeout (e.g. no DHCP server on this
-// LAN), retries once with the saved static-IP fallback so the device still ends up
-// reachable instead of falling all the way back to AP-only mode. Sets usedStaticFallback so
-// the caller can pick the right diag-AP SSID prefix.
+static bool connectWithCred(const char *ssid, const char *pass, bool &usedStaticFallback);
+
+// Thu SSID da cau hinh truoc, roi den cac AP du phong. Moi bo deu chay het luong DHCP/IP-tinh
+// cua connectWithCred(). Sets usedStaticFallback so the caller can pick the right diag-AP SSID
+// prefix.
 bool connectWiFi(bool &usedStaticFallback)
+{
+    usedStaticFallback = false;
+
+    // Thu lan luot: SSID cau hinh tren Web UI truoc, roi den cac AP du phong trong wifiBackups.
+    // Moi cai deu chay HET luong ben duoi (ke ca uu tien IP tinh) vi chung la cung mot mang.
+    for (size_t i = 0; i <= wifiBackupCount; i++)
+    {
+        const char *ssid = (i == 0) ? wifiSSID : wifiBackups[i - 1].ssid;
+        const char *pass = (i == 0) ? wifiPASS : wifiBackups[i - 1].pass;
+
+        // Bo qua AP du phong trung ten voi SSID da cau hinh: thu lai y het lan nua chi ton thoi
+        // gian, ma o day thoi gian la thu dat nhat (moi vong co the ton 40 giay).
+        if (i > 0 && strcmp(ssid, wifiSSID) == 0)
+            continue;
+
+        if (i > 0)
+            Serial.printf("Chua vao duoc mang - thu AP du phong '%s'\r\n", ssid);
+
+        if (connectWithCred(ssid, pass, usedStaticFallback))
+            return true;
+    }
+
+    return false;
+}
+
+// Toan bo luong cho MOT bo SSID/mat khau: uu tien IP tinh (neu co tick) -> DHCP -> IP tinh lan
+// cuoi. Tach ra khoi connectWiFi() de cac AP du phong dung lai duoc y nguyen luong nay.
+static bool connectWithCred(const char *ssid, const char *pass, bool &usedStaticFallback)
 {
     usedStaticFallback = false;
 
@@ -396,18 +444,18 @@ bool connectWiFi(bool &usedStaticFallback)
         // duoc. Neu router chan ICMP thi day la canh bao gia, gia phai tra la 20s cho DHCP -
         // va neu DHCP cung khong len thi nhanh fallback ben duoi VAN ap lai dung IP tinh nay
         // (lan do khong kiem ping), nen truong hop xau nhat chi la boot cham hon.
-        if (connectWiFiAttempt(true, true))
+        if (connectWiFiAttempt(true, true, ssid, pass))
         {
             usedStaticFallback = true;
             return true;
         }
 
         Serial.println("Static IP (uu tien) failed, retrying with DHCP");
-        if (connectWiFiAttempt(false, false))
+        if (connectWiFiAttempt(false, false, ssid, pass))
             return true;
 
         Serial.println("DHCP cung that bai - quay lai IP tinh, lan nay khong kiem ping");
-        if (connectWiFiAttempt(true, false))
+        if (connectWiFiAttempt(true, false, ssid, pass))
         {
             usedStaticFallback = true;
             return true;
@@ -416,14 +464,14 @@ bool connectWiFi(bool &usedStaticFallback)
         return false;
     }
 
-    if (connectWiFiAttempt(false, false))
+    if (connectWiFiAttempt(false, false, ssid, pass))
         return true;
 
     Serial.println("DHCP failed, retrying with static IP fallback");
 
     // verifyGateway = false: DHCP da chet, IP tinh la hy vong cuoi. Vut no di vi khong ping
     // duoc dong nghia voi roi han xuong AP-only (mat MQTT/OSC) - te hon la cu thu dung no.
-    if (connectWiFiAttempt(true, false))
+    if (connectWiFiAttempt(true, false, ssid, pass))
     {
         usedStaticFallback = true;
         return true;
@@ -540,6 +588,7 @@ void setup() {
   Serial.begin(115200);
 
   fwIdInit();
+  wifiRebootCounterInit();
 
   loadConfig();
 
@@ -570,9 +619,105 @@ void setup() {
   Serial.println("Ready");
 }
 
+// ======================================================================
+// MAT WIFI GIUA CHUNG -> TU RESET DE VAO LAI
+// ======================================================================
+// connectWiFi() chi chay trong setup(), nen mat song giua chung thi board nam im khong mang cho
+// toi khi co nguoi rut nguon. Reset la cach re nhat de di lai chinh cai luong da co (SSID chinh
+// -> cac AP du phong) ma khong phai viet them mot may trang thai ket noi lai.
+//
+// Bo dem chan vong lap PHAI nam trong RTC_NOINIT_ATTR chu khong phai RTC_DATA_ATTR: vung
+// .rtc.data duoc bootloader nap lai tu anh firmware o MOI lan boot, nen bo dem se ve 0 sau moi
+// lan reset va cai tran tro thanh vo nghia. Vung .rtc_noinit thi khong bi nap lai - doi lai luc
+// cup nguon no chua RAC, nen phai co magic word de biet khi nao duoc tin.
+#define WIFI_REBOOT_MAGIC 0x44544831UL   // "DTH1"
+RTC_NOINIT_ATTR static uint32_t wifiRebootMagic;
+RTC_NOINIT_ATTR static uint32_t wifiRebootCount;
+
+void wifiRebootCounterInit()
+{
+    if (wifiRebootMagic != WIFI_REBOOT_MAGIC)
+    {
+        wifiRebootMagic = WIFI_REBOOT_MAGIC;
+        wifiRebootCount = 0;
+        Serial.println("WiFi: khoi tao bo dem reset (cup nguon hoac nap firmware moi)");
+    }
+}
+
+uint32_t wifiLossReboots() { return wifiRebootCount; }
+
+static void wifiWatchdogTick()
+{
+    const unsigned long WIFI_LOST_REBOOT_MS = 60000UL;  // mat song lien tuc bao lau thi reset
+    const unsigned long WIFI_OK_CLEAR_MS    = 60000UL;  // song lanh lien tuc bao lau thi xoa bo dem
+    const uint32_t WIFI_REBOOT_MAX = 3;
+
+    static unsigned long lostSince = 0;
+    static unsigned long okSince = 0;
+    static bool loggedGaveUp = false;
+
+    if (WiFi.status() == WL_CONNECTED)
+    {
+        lostSince = 0;
+        if (okSince == 0)
+        {
+            okSince = millis();
+        }
+        else if (wifiRebootCount > 0 && (millis() - okSince) >= WIFI_OK_CLEAR_MS)
+        {
+            // Song da lanh lai va tru duoc 1 phut - su co truoc do coi nhu qua, tra bo dem ve 0
+            // de lan mat song SAU van con quyen reset.
+            Serial.println("WiFi: on dinh tro lai - xoa bo dem reset");
+            wifiRebootCount = 0;
+            loggedGaveUp = false;
+        }
+        return;
+    }
+
+    okSince = 0;
+
+    if (lostSince == 0)
+    {
+        lostSince = millis();
+        Serial.printf("WiFi: MAT SONG - se tu reset neu khong vao lai duoc trong %lu giay\r\n",
+                      WIFI_LOST_REBOOT_MS / 1000UL);
+        return;
+    }
+    if ((millis() - lostSince) < WIFI_LOST_REBOOT_MS)
+        return;
+
+    // Dang tai firmware tu URL: reset vao giua se de lai mot ban firmware ghi do dang.
+    if (otaUrlPending)
+        return;
+
+    // Co nguoi dang noi vao diag AP de xem/sua cau hinh - reset giua luc ho dang go la pha hoai.
+    if (diagApActive && WiFi.softAPgetStationNum() > 0)
+        return;
+
+    if (wifiRebootCount >= WIFI_REBOOT_MAX)
+    {
+        if (!loggedGaveUp)
+        {
+            Serial.printf("WiFi: da reset %u lan ma van khong co song - thoi, khong reset nua "
+                          "(sensor/relay/nhac van chay). Cup nguon de dat lai bo dem.\r\n",
+                          (unsigned)wifiRebootCount);
+            loggedGaveUp = true;
+        }
+        return;
+    }
+
+    wifiRebootCount++;
+    Serial.printf(">>> WiFi mat song qua %lu giay - reset lan %u de vao lai <<<\r\n",
+                  WIFI_LOST_REBOOT_MS / 1000UL, (unsigned)wifiRebootCount);
+    delay(200);  // cho dong log tren ra het khoi UART truoc khi cat dien
+    ESP.restart();
+}
+
 void loop() {
 
   checkSensors();
+
+  wifiWatchdogTick();
 
   if (diagApActive && (millis() - diagApStartMs) >= DIAG_AP_DURATION_MS)
   {

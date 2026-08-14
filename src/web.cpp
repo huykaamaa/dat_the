@@ -67,7 +67,9 @@ void handleData()
   // Trang dashboard poll route nay 2 lan/giay VINH VIEN khi co tab mo. Khong reserve() thi
   // moi lan goi la mot chuoi realloc tang dan - dung cai nguy co phan manh heap ma globals.h
   // vien dan de doi config sang char[].
-  data.reserve(1024);
+  // 2048: rieng phan chuoi tinh trong ham nay da ~1.3KB, chua ke SSID/IP/RSSI dong vao.
+  // reserve(1024) khong con du - tuc no dang realloc dung cai viec ma no sinh ra de tranh.
+  data.reserve(2048);
 
   // BO dong "Firmware build: __DATE__ __TIME__" (2026-08-10). PlatformIO chi bien dich lai file
   // nao thay doi, ma macro do nam trong web.cpp - lan build nao chi sua main.cpp/html.cpp thi
@@ -79,6 +81,34 @@ void handleData()
   else data += mqttConnected ? "<span style='color:green'>CONNECTED</span>" : "<span style='color:red'>DISCONNECTED</span>";
   data += " &nbsp;|&nbsp; <b>OSC:</b> ";
   data += oscEnabled ? "<span style='color:green'>ENABLED</span>" : "<span style='color:gray'>DISABLED</span>";
+  data += "<br>";
+
+  // Muc song WiFi. Doc thang tu WiFi.RSSI() moi lan poll (2 lan/giay) chu khong cache: chinh su
+  // nhay cua no la thu huu ich - dung de ra cho nao dat board thi song khoe hon.
+  //
+  // Kem chu danh gia chu khong chi so tran: -67 dBm khong noi len dieu gi voi nguoi dung tay
+  // anten len tuong, con "yeu" thi noi ngay. Nguong lay theo muc thuong dung cho luu luong lien
+  // tuc: tren -60 la thoai mai, duoi -80 la bat dau rot goi.
+  data += "<b>WiFi:</b> ";
+  if (WiFi.status() != WL_CONNECTED) {
+    data += "<span style='color:#c62828;font-weight:bold'>MẤT KẾT NỐI</span>";
+  } else {
+    long rssi = WiFi.RSSI();
+    const char *muc;
+    const char *mau;
+    if (rssi >= -60)      { muc = "mạnh";     mau = "#2e7d32"; }
+    else if (rssi >= -70) { muc = "khá";      mau = "#2e7d32"; }
+    else if (rssi >= -80) { muc = "yếu";      mau = "#b45309"; }
+    else                  { muc = "rất yếu";  mau = "#c62828"; }
+
+    data += "<span style='color:#2e7d32;font-weight:bold'>" + String(WiFi.SSID()) + "</span>";
+    data += " &middot; " + WiFi.localIP().toString();
+    data += " &middot; <b style='color:" + String(mau) + "'>" + String(rssi) + " dBm (" + muc + ")</b>";
+  }
+  if (wifiLossReboots() > 0) {
+    data += "<br><span style='color:#b45309;font-size:12px'>⚠ Đã tự reset " + String(wifiLossReboots()) +
+            " lần vì mất WiFi (đếm từ lần cắm điện gần nhất)</span>";
+  }
   data += "<br>";
 
   data += "<b>Music:</b> ";
