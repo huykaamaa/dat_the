@@ -522,30 +522,28 @@ void startDiagAp(bool isFallback)
     }
 }
 
-// AP cau hinh khi khong vao duoc mang nao. Dung WIFI_AP_STA chu KHONG phai WIFI_AP: che do
-// AP thuan tat han phan STA, tuc board thoi tim song vinh vien va router co song lai cung
-// khong biet - truoc day phai co watchdog reset moi ra khoi trang thai do (xem
-// wifiReconnectTick()). Giu STA sang va goi begin() de radio tu dam nhiem viec do o nen.
+// AP cau hinh khi khong vao duoc mang nao.
 //
-// Gia phai tra: AP va STA dung chung mot con radio nen bang thong Web UI qua "DAT_THE" kem
-// hon che do AP thuan. Trang nay ~14KB, khong dang ke.
+// PHAI la WIFI_AP thuan, KHONG duoc de WIFI_AP_STA thuong truc (da thu va hong that,
+// 2026-08-21): ESP32 chi co MOT con radio, AP va STA dung chung mot kenh. STA di tim mot SSID
+// khong ton tai thi quet vong qua moi kenh, ma autoReconnect mac dinh lai coi NO_AP_FOUND la
+// ly do "thu lai" nen no quet KHONG NGUNG - AP bi keo nhay kenh theo, beacon dut quang, dien
+// thoai khong con thay "DAT_THE". Tuc la mat luon duong vao cuoi cung, dung luc can no nhat.
+//
+// Viec do lai mang van co, nhung theo tung CUA SO NGAN do wifiReconnectTick() mo ra roi dong
+// lai, chu khong bat thuong truc.
+bool apFallbackActive = false;
+
 void startAP()
 {
-    WiFi.mode(WIFI_AP_STA);
+    WiFi.mode(WIFI_AP);
 
     WiFi.softAP(apSSID, apPASS);
-
-    // connectWiFiAttempt() ket thuc bang WiFi.disconnect() - do la ngat TU NGUYEN
-    // (ASSOC_LEAVE), ma core co tinh khong tu noi lai voi ly do do. Phai goi begin() lai o day
-    // thi auto-reconnect moi duoc vu trang. Lan thu cuoi truoc do la IP tinh nen phai tra cau
-    // hinh IP ve dung y operator, giong wifiReconnectTick().
-    if (!staticFirst)
-        WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE);
-    WiFi.begin(wifiSSID, wifiPASS);
+    apFallbackActive = true;
 
     Serial.print("AP IP: ");
     Serial.println(WiFi.softAPIP());
-    Serial.printf("STA van bat o nen, tu vao lai '%s' khi mang song lai\r\n", wifiSSID);
+    Serial.printf("Se thu lai '%s' moi 5 phut (cua so ngan, AP van giu)\r\n", wifiSSID);
 }
 
 // Xem globals.h. Goi 1 lan trong setup(); log ra Serial luon de doi chieu duoc voi dashboard
@@ -672,12 +670,43 @@ void setup() {
 static void wifiReconnectTick()
 {
     const unsigned long WIFI_NUDGE_MS = 5UL * 60UL * 1000UL;
+    // Cua so cho MOT cu thu khi dang o AP du phong. Het cua so ma khong vao duoc thi TAT STA,
+    // tra AP ve WIFI_AP sach - xem startAP(). 15s du cho scan + associate + DHCP o mang lanh.
+    const unsigned long AP_RETRY_WINDOW_MS = 15000UL;
 
     static unsigned long lostSince = 0;
+    static bool retrying = false;
+    static unsigned long retryStart = 0;
 
     if (WiFi.status() == WL_CONNECTED)
     {
         lostSince = 0;
+        if (retrying)
+        {
+            // Cu thu vua roi an. Tra auto-reconnect ve mac dinh de radio tu lo cac lan sau, va
+            // thoi che do AP du phong.
+            retrying = false;
+            apFallbackActive = false;
+            WiFi.setAutoReconnect(true);
+            Serial.printf("WiFi: vao lai duoc '%s' - %s\r\n", wifiSSID,
+                          WiFi.localIP().toString().c_str());
+        }
+        return;
+    }
+
+    // Dang mo cua so thu: cho het gio roi dong lai, khong lam gi khac.
+    if (retrying)
+    {
+        if ((millis() - retryStart) < AP_RETRY_WINDOW_MS)
+            return;
+
+        retrying = false;
+        if (apFallbackActive)
+        {
+            // Dong STA lai NGAY. De no bat tiep thi no quet lien tuc va lam chet AP du phong.
+            WiFi.mode(WIFI_AP);
+            Serial.println("WiFi: thu lai khong an - dong STA, giu AP du phong");
+        }
         return;
     }
 
@@ -691,6 +720,10 @@ static void wifiReconnectTick()
 
     // Dang ghi firmware thi dung dong vao ket noi.
     if (otaUrlPending)
+        return;
+
+    // Co nguoi dang noi vao AP de sua cau hinh - cat song AP giua luc ho dang go la pha hoai.
+    if (apFallbackActive && WiFi.softAPgetStationNum() > 0)
         return;
 
     lostSince = millis();  // len lich cu huych ke tiep sau 5 phut nua
@@ -709,8 +742,19 @@ static void wifiReconnectTick()
         WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE);
     }
 
-    Serial.println("WiFi: mat song 5 phut - goi lai begin() (khong reset)");
+    if (apFallbackActive)
+    {
+        // Mo cua so: bat STA len canh AP. autoReconnect PHAI tat, neu khong thi sau khi cu thu
+        // nay hong, core tu goi connect() lai mai mai (NO_AP_FOUND nam trong dien "thu lai") va
+        // AP du phong chet theo - dung loi da mac hom nay.
+        WiFi.setAutoReconnect(false);
+        WiFi.mode(WIFI_AP_STA);
+    }
+
+    Serial.println("WiFi: mat song 5 phut - thu goi lai begin() (khong reset)");
     WiFi.begin(wifiSSID, wifiPASS);
+    retrying = true;
+    retryStart = millis();
 }
 
 void loop() {
