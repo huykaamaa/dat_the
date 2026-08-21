@@ -92,23 +92,6 @@ extern bool diagApActive;
 // hien len dashboard vi mot cu reset giua buoi dien la vo hinh voi nguoi van hanh.
 void wifiRebootCounterInit();
 uint32_t wifiLossReboots();
-
-// --- Reset "an toan" khi mat mang lau ma KHONG co the nao dang dat (2026-08-21) ------------
-// wifiWatchdogTick() reset sau 60s mat song nhung toi da 3 lan roi thoi - co tran do de board
-// khong reset vong tron giua buoi dien. Nhung sau 3 lan ay, neu router chet mot luc lau roi
-// moi song lai, board nam im khong mang cho toi khi co nguoi rut dien.
-//
-// Day la luoi thu hai, cham va an toan hon: doi DU 10 PHUT mat mang, va chi reset khi KHONG
-// con the nao tren bat ky vi tri nao + nhac da tat han. Khong co the tuc la khong ai dang
-// dien, nen reset khong cat ngang cai gi. Vi vay no KHONG bi gioi han so lan: cu 10 phut mat
-// mang ma dang ranh thi thu lai mot cu.
-//
-// Bo dem reset rieng, khong dung chung wifiRebootCount: neu dem chung thi may cu reset kieu
-// nay se day wifiWatchdogTick() cham tran 3 lan va tu bo nhanh 60 giay - tuc luoi cham lai vo
-// hieu hoa luoi nhanh.
-extern bool idleResetEnabled;   // o tick tren Web UI (NVS key "idle_reset"), mac dinh BAT
-uint32_t idleReboots();
-
 extern unsigned long diagApStartMs;
 
 // MQTT - ported tu gia_sach (ban goc, truoc khi rut tu 6 xuong 2 sensor), tu than gia_sach

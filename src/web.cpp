@@ -109,13 +109,6 @@ void handleData()
     data += "<br><span style='color:#b45309;font-size:12px'>⚠ Đã tự reset " + String(wifiLossReboots()) +
             " lần vì mất WiFi (đếm từ lần cắm điện gần nhất)</span>";
   }
-  // Dem rieng voi bo dem tren: hai co che khac nhau, gop lai thi khong con biet board reset vi
-  // luoi nhanh 60 giay hay vi luoi cham 10 phut - ma do la dieu dau tien can biet khi di truy
-  // mot cu reset la giua buoi.
-  if (idleReboots() > 0) {
-    data += "<br><span style='color:#b45309;font-size:12px'>⚠ Đã tự reset " + String(idleReboots()) +
-            " lần vì mất mạng 10 phút lúc không có thẻ nào (đếm từ lần cắm điện gần nhất)</span>";
-  }
   data += "<br>";
 
   data += "<b>Music:</b> ";
@@ -225,7 +218,6 @@ void handleSave() {
   saveIpArg("static_mask", staticMask, sizeof(staticMask), staticAddrInvalid);
 
   staticFirst = server.hasArg("static_first");
-  idleResetEnabled = server.hasArg("idle_reset");
 
   // Admin Auth - password field is always rendered blank; only overwrite if the operator
   // actually typed a new one.
@@ -608,7 +600,6 @@ int saveConfig() {
   if (!prefs.putString("static_gw", staticGW)) fails++;
   if (!prefs.putString("static_mask", staticMask)) fails++;
   if (!prefs.putBool(NVS_KEY("static_first"), staticFirst)) fails++;
-  if (!prefs.putBool(NVS_KEY("idle_reset"), idleResetEnabled)) fails++;
   if (!prefs.putString("auth_user", authUser)) fails++;
   if (!prefs.putString("auth_pass", authPass)) fails++;
   if (!prefs.putString(NVS_KEY("ota_url"), otaUrl)) fails++;
@@ -676,7 +667,6 @@ void loadConfig() {
   strncpy(staticMask, prefs.getString("static_mask", staticMask).c_str(), sizeof(staticMask) - 1);
   staticMask[sizeof(staticMask) - 1] = '\0';
   staticFirst = prefs.getBool(NVS_KEY("static_first"), staticFirst);
-  idleResetEnabled = prefs.getBool(NVS_KEY("idle_reset"), idleResetEnabled);
   strncpy(authUser, prefs.getString("auth_user", authUser).c_str(), sizeof(authUser) - 1);
   authUser[sizeof(authUser) - 1] = '\0';
   strncpy(authPass, prefs.getString("auth_pass", authPass).c_str(), sizeof(authPass) - 1);

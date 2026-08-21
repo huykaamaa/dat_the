@@ -40,10 +40,6 @@ char staticGW[16]   = "192.168.8.1";
 char staticMask[16] = "255.255.255.0";
 bool staticFirst = false;
 
-// Xem globals.h. Mac dinh BAT: no chi chay khi mat mang 10 phut VA khong con the nao tren
-// board, tuc luc khong the pha hong buoi dien nao.
-bool idleResetEnabled = true;
-
 // F6-style Basic Auth (ported from phòng Cân Tim), gates /save and /test_relay.
 char authUser[32] = "admin";
 char authPass[32] = "admin";
@@ -419,7 +415,7 @@ static bool connectWiFiAttempt(bool useStatic, bool verifyGateway, const char *s
 static bool connectWithCred(const char *ssid, const char *pass, bool &usedStaticFallback);
 
 // --- Boot nay co phai do TU RESET vi mat mang khong? (2026-08-21) -------------------------
-// Dat = 1 ngay truoc ESP.restart() trong wifiWatchdogTick() va idleResetTick(); connectWiFi()
+// Dat = 1 ngay truoc ESP.restart() trong wifiWatchdogTick(); connectWiFi()
 // doc roi xoa ngay, nen no chi co hieu luc dung MOT lan boot.
 //
 // Dung de lam gi: boot kieu do thi CHI thu SSID cau hinh tren Web UI, bo qua cac AP du phong.
@@ -691,7 +687,6 @@ void setup() {
 #define WIFI_REBOOT_MAGIC 0x44544831UL   // "DTH1"
 RTC_NOINIT_ATTR static uint32_t wifiRebootMagic;
 RTC_NOINIT_ATTR static uint32_t wifiRebootCount;
-RTC_NOINIT_ATTR static uint32_t idleRebootCount;   // bo dem RIENG cua idleResetTick(), xem globals.h
 
 void wifiRebootCounterInit()
 {
@@ -699,7 +694,6 @@ void wifiRebootCounterInit()
     {
         wifiRebootMagic = WIFI_REBOOT_MAGIC;
         wifiRebootCount = 0;
-        idleRebootCount = 0;
         lossBootPending = 0;
         lossBootStreak = 0;
         Serial.println("WiFi: khoi tao bo dem reset (cup nguon hoac nap firmware moi)");
@@ -707,7 +701,6 @@ void wifiRebootCounterInit()
 }
 
 uint32_t wifiLossReboots() { return wifiRebootCount; }
-uint32_t idleReboots() { return idleRebootCount; }
 
 static void wifiWatchdogTick()
 {
@@ -781,87 +774,11 @@ static void wifiWatchdogTick()
     ESP.restart();
 }
 
-// ======================================================================
-// MAT MANG LAU + KHONG CO THE NAO DANG DAT -> TU RESET (khong gioi han so lan)
-// ======================================================================
-// Xem giai thich day du trong globals.h. Tom tat: luoi thu hai cho truong hop
-// wifiWatchdogTick() da dat tran 3 lan reset va tu bo, con router thi mai sau moi song lai.
-static void idleResetTick()
-{
-    const unsigned long IDLE_RESET_LOST_MS = 10UL * 60UL * 1000UL; // mat mang 10 phut
-    // Phai RANH lien tuc bao lau moi duoc reset. Moc 10 phut o tren co the roi dung vao dung
-    // giay nguoi van hanh vua rut the cuoi cung ra de sap lai bo khac; doi them nua phut thi
-    // cai "khong co the nao" moi la mot trang thai nghi that su chu khong phai mot khoang
-    // trong giua hai thao tac.
-    const unsigned long IDLE_STEADY_MS = 30000UL;
-
-    static unsigned long lostSince = 0;
-    static unsigned long idleSince = 0;
-
-    // Song ve lai (hoac o tick bi bo) thi XOA moc mat song, khong chi return: giu lai moc cu
-    // thi mot lan rot mang 9 phut hom truoc cong voi mot lan rot 1 phut hom sau se cho ra mot
-    // cu reset gan nhu tuc thi, dung luc dang co viec.
-    if (!idleResetEnabled || WiFi.status() == WL_CONNECTED)
-    {
-        lostSince = 0;
-        idleSince = 0;
-        return;
-    }
-
-    if (lostSince == 0)
-        lostSince = millis();
-
-    // "Khong co the nao dang dat" lay theo relayState[] - trang thai da qua debounce cua TUNG
-    // vi tri - va tinh CA nhung vi tri khong duoc tick Enable. Chat hon muc can thiet, co y:
-    // mot vi tri bo tick van co the dang co the nam tren do, va reset luc do tuy khong cat cue
-    // nao nhung cung khong gap gi.
-    bool coThe = false;
-    for (int i = 0; i < SENSOR_NUM; i++)
-    {
-        if (relayState[i]) { coThe = true; break; }
-    }
-
-    // isPlaying: nhac con dang fade-out sau khi rut the cuoi cung thi van chua goi la ranh.
-    // stableState: cue tong (MQTT/nhac) phai da ve off - no di sau relayState mot nhip
-    // debounceTime nen kiem ca hai.
-    if (coThe || isPlaying || stableState)
-    {
-        idleSince = 0;
-        return;
-    }
-
-    if (idleSince == 0)
-    {
-        idleSince = millis();
-        return;
-    }
-
-    if ((millis() - lostSince) < IDLE_RESET_LOST_MS)
-        return;
-    if ((millis() - idleSince) < IDLE_STEADY_MS)
-        return;
-
-    // Cung 2 ngoai le nhu wifiWatchdogTick(): dang ghi firmware, hoac co nguoi dang noi vao
-    // diag AP de sua cau hinh.
-    if (otaUrlPending)
-        return;
-    if (diagApActive && WiFi.softAPgetStationNum() > 0)
-        return;
-
-    idleRebootCount++;
-    lossBootPending = 1;  // cung la reset vi mat mang - lan boot ke tiep chi thu SSID chinh
-    Serial.printf(">>> Mat mang qua %lu phut va khong co the nao tren board - reset (lan %u) <<<\r\n",
-                  IDLE_RESET_LOST_MS / 60000UL, (unsigned)idleRebootCount);
-    delay(200);  // cho dong log tren ra het khoi UART truoc khi cat dien
-    ESP.restart();
-}
-
 void loop() {
 
   checkSensors();
 
   wifiWatchdogTick();
-  idleResetTick();
 
   if (diagApActive && (millis() - diagApStartMs) >= DIAG_AP_DURATION_MS)
   {
