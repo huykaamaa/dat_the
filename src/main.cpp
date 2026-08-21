@@ -412,81 +412,136 @@ static bool connectWiFiAttempt(bool useStatic, bool verifyGateway, const char *s
     return true;
 }
 
-static bool connectWithCred(const char *ssid, const char *pass, bool &usedStaticFallback);
+// ======================================================================
+// CHON AP TRUOC, LO IP SAU
+// ======================================================================
+// 2026-08-21: viet lai. Truoc day moi SSID chay HET luong IP cua rieng no (DHCP 20s -> IP tinh
+// 10s, hoac 3 buoc neu tick "uu tien IP tinh"), nhan len 3 SSID = toi 90-120 giay mo mam.
+//
+// Vo ly o cho: ba SSID nay la ba ACCESS POINT cua CUNG MOT MANG, khong phai ba mang khac nhau.
+// Bo IP tinh vi the giong het nhau du board bam vao AP nao - thu lai no tren tung AP chi nhan
+// thoi gian len chu khong cho them mot co hoi nao. Chon AP la viec cua tang lien ket, xin IP la
+// viec cua tang mang; gop hai cai vao mot vong lap la tron hai thu doc lap nhau.
+//
+// Gio tach lam hai:
+//   1. QUET mot lan (~2-3s) xem AP nao thuc su co mat, roi chi thu nhung cai do - theo dung thu
+//      tu uu tien cu (SSID cau hinh tren Web UI truoc, roi den cac AP du phong).
+//   2. Xin IP: DHCP tren tung AP co mat; het ma van khong ra thi IP tinh MOT LAN duy nhat.
+//
+// Quet khong thay gi (SSID an, hoac quet loi) thi quay ve thu mu ca ba nhu cu - quet la de di
+// nhanh hon, khong duoc phep tro thanh mot cach moi de that bai.
+struct CredRef { const char *ssid; const char *pass; };
 
-// Thu SSID da cau hinh truoc, roi den cac AP du phong. Moi bo deu chay het luong DHCP/IP-tinh
-// cua connectWithCred(). Sets usedStaticFallback so the caller can pick the right diag-AP SSID
-// prefix.
-bool connectWiFi(bool &usedStaticFallback)
+static size_t buildCredList(CredRef *out, size_t maxOut)
 {
-    usedStaticFallback = false;
-
-    // Thu lan luot: SSID cau hinh tren Web UI truoc, roi den cac AP du phong trong wifiBackups.
-    // Moi cai deu chay HET luong ben duoi (ke ca uu tien IP tinh) vi chung la cung mot mang.
-    for (size_t i = 0; i <= wifiBackupCount; i++)
+    size_t n = 0;
+    for (size_t i = 0; i <= wifiBackupCount && n < maxOut; i++)
     {
         const char *ssid = (i == 0) ? wifiSSID : wifiBackups[i - 1].ssid;
         const char *pass = (i == 0) ? wifiPASS : wifiBackups[i - 1].pass;
 
-        // Bo qua AP du phong trung ten voi SSID da cau hinh: thu lai y het lan nua chi ton thoi
-        // gian, ma o day thoi gian la thu dat nhat (moi vong co the ton 40 giay).
+        if (ssid == nullptr || strlen(ssid) == 0)
+            continue;
+        // Bo AP du phong trung ten voi SSID da cau hinh: thu lai y het lan nua chi ton thoi gian.
         if (i > 0 && strcmp(ssid, wifiSSID) == 0)
             continue;
 
-        if (i > 0)
-            Serial.printf("Chua vao duoc mang - thu AP du phong '%s'\r\n", ssid);
-
-        if (connectWithCred(ssid, pass, usedStaticFallback))
-            return true;
+        out[n].ssid = ssid;
+        out[n].pass = pass;
+        n++;
     }
-
-    return false;
+    return n;
 }
 
-// Toan bo luong cho MOT bo SSID/mat khau: uu tien IP tinh (neu co tick) -> DHCP -> IP tinh lan
-// cuoi. Tach ra khoi connectWiFi() de cac AP du phong dung lai duoc y nguyen luong nay.
-static bool connectWithCred(const char *ssid, const char *pass, bool &usedStaticFallback)
+// Loc danh sach tren xuong con nhung SSID quet thay. Tra ve so luong con lai; 0 nghia la khong
+// thay cai nao (hoac quet loi) - caller giu nguyen danh sach day du.
+static size_t filterByScan(CredRef *list, size_t n)
+{
+    WiFi.mode(WIFI_STA);
+    Serial.print("Quet song... ");
+    int found = WiFi.scanNetworks();
+    if (found <= 0)
+    {
+        Serial.println("khong thay AP nao (hoac quet loi) - thu mu ca danh sach");
+        WiFi.scanDelete();
+        return 0;
+    }
+
+    size_t keep = 0;
+    for (size_t i = 0; i < n; i++)
+    {
+        for (int j = 0; j < found; j++)
+        {
+            if (WiFi.SSID(j) == list[i].ssid)
+            {
+                if (keep != i)
+                    list[keep] = list[i];
+                keep++;
+                break;
+            }
+        }
+    }
+    WiFi.scanDelete();
+
+    if (keep == 0)
+    {
+        Serial.printf("thay %d AP nhung khong co cai nao trong danh sach - thu mu\r\n", found);
+        return 0;
+    }
+
+    Serial.printf("thay %d AP, %u cai thuoc danh sach:", found, (unsigned)keep);
+    for (size_t i = 0; i < keep; i++)
+        Serial.printf(" %s", list[i].ssid);
+    Serial.println();
+    return keep;
+}
+
+// Sets usedStaticFallback so the caller can pick the right diag-AP SSID prefix.
+bool connectWiFi(bool &usedStaticFallback)
 {
     usedStaticFallback = false;
 
-    // "Uu tien IP tinh": dat IP tinh ngay tu lan thu dau, bo han 20s cho DHCP (boot nhanh hon,
-    // dung khi mang khong co DHCP server hoac muon chac chan mot IP co dinh). Neu lan thu do
-    // that bai (IP/GW/mask nhap sai, hoac khong associate duoc) van lui ve DHCP nhu binh
-    // thuong, nen tick nham khong lam mat board.
+    CredRef list[1 + sizeof(wifiBackups) / sizeof(wifiBackups[0])];
+    size_t n = buildCredList(list, sizeof(list) / sizeof(list[0]));
+    if (n == 0)
+        return false;
+
+    size_t scanned = filterByScan(list, n);
+    if (scanned > 0)
+        n = scanned;
+
+    // "Uu tien IP tinh": dat IP tinh ngay tu dau, bo han 20s cho DHCP. Dung khi mang khong co
+    // DHCP server hoac muon chac chan mot IP co dinh. Chi thu tren AP DAU TIEN co mat - bo IP
+    // nay khong phu thuoc AP nao, thu tren ca ba la lang phi thuan tuy.
+    //
+    // verifyGateway = true: nhanh nay that bai van con DHCP de lui ve nen kiem duoc chat. Neu
+    // router chan ICMP thi day la canh bao gia, gia phai tra la 20s cho DHCP - va neu DHCP cung
+    // khong len thi buoc IP tinh cuoi ham VAN ap lai dung bo IP nay (lan do khong kiem ping),
+    // nen truong hop xau nhat chi la boot cham hon.
     if (staticFirst)
     {
-        // verifyGateway = true: o nhanh nay that bai van con DHCP de lui ve nen kiem tra chat
-        // duoc. Neu router chan ICMP thi day la canh bao gia, gia phai tra la 20s cho DHCP -
-        // va neu DHCP cung khong len thi nhanh fallback ben duoi VAN ap lai dung IP tinh nay
-        // (lan do khong kiem ping), nen truong hop xau nhat chi la boot cham hon.
-        if (connectWiFiAttempt(true, true, ssid, pass))
+        if (connectWiFiAttempt(true, true, list[0].ssid, list[0].pass))
         {
             usedStaticFallback = true;
             return true;
         }
-
         Serial.println("Static IP (uu tien) failed, retrying with DHCP");
-        if (connectWiFiAttempt(false, false, ssid, pass))
-            return true;
-
-        Serial.println("DHCP cung that bai - quay lai IP tinh, lan nay khong kiem ping");
-        if (connectWiFiAttempt(true, false, ssid, pass))
-        {
-            usedStaticFallback = true;
-            return true;
-        }
-
-        return false;
     }
 
-    if (connectWiFiAttempt(false, false, ssid, pass))
-        return true;
+    // Buoc 1: DHCP tren tung AP co mat.
+    for (size_t i = 0; i < n; i++)
+    {
+        if (i > 0)
+            Serial.printf("Chua vao duoc mang - thu AP du phong '%s'\r\n", list[i].ssid);
+        if (connectWiFiAttempt(false, false, list[i].ssid, list[i].pass))
+            return true;
+    }
 
-    Serial.println("DHCP failed, retrying with static IP fallback");
-
-    // verifyGateway = false: DHCP da chet, IP tinh la hy vong cuoi. Vut no di vi khong ping
-    // duoc dong nghia voi roi han xuong AP-only (mat MQTT/OSC) - te hon la cu thu dung no.
-    if (connectWiFiAttempt(true, false, ssid, pass))
+    // Buoc 2: IP tinh, MOT LAN, tren AP dau tien. verifyGateway = false: DHCP da chet, IP tinh
+    // la hy vong cuoi - vut no di vi khong ping duoc dong nghia voi roi han xuong AP-only (mat
+    // MQTT/OSC), te hon la cu thu dung no.
+    Serial.println("DHCP that bai tren moi AP - thu IP tinh mot lan cuoi");
+    if (connectWiFiAttempt(true, false, list[0].ssid, list[0].pass))
     {
         usedStaticFallback = true;
         return true;
