@@ -105,10 +105,6 @@ void handleData()
     data += " &middot; " + WiFi.localIP().toString();
     data += " &middot; <b style='color:" + String(mau) + "'>" + String(rssi) + " dBm (" + muc + ")</b>";
   }
-  if (wifiLossReboots() > 0) {
-    data += "<br><span style='color:#b45309;font-size:12px'>⚠ Đã tự reset " + String(wifiLossReboots()) +
-            " lần vì mất WiFi (đếm từ lần cắm điện gần nhất)</span>";
-  }
   data += "<br>";
 
   data += "<b>Music:</b> ";

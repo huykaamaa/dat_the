@@ -87,11 +87,6 @@ extern bool otaUrlPending;
 void otaUrlTick();
 extern bool diagApActive;
 
-// Mat WiFi giua chung thi board tu reset de di lai luong ket noi trong setup() - xem
-// wifiWatchdogTick() trong main.cpp. Bo dem song qua reset (RTC_NOINIT) de chan vong lap, va
-// hien len dashboard vi mot cu reset giua buoi dien la vo hinh voi nguoi van hanh.
-void wifiRebootCounterInit();
-uint32_t wifiLossReboots();
 extern unsigned long diagApStartMs;
 
 // MQTT - ported tu gia_sach (ban goc, truoc khi rut tu 6 xuong 2 sensor), tu than gia_sach
