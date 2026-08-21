@@ -48,6 +48,16 @@ char staticGW[16]   = "192.168.8.1";
 char staticMask[16] = "255.255.255.0";
 bool staticFirst = false;
 
+// DNS DU PHONG khi chay IP TINH (2026-08-21). Nhanh IP tinh von chi dien dns1 = gateway va bo
+// trong dns2 - do la mot GIA DINH: rang gateway ay co chay dich vu DNS va chiu tra loi cho
+// thiet bi nay. Gia dinh do da vo o mot mang that ben phong Gia Sach: board hoi gateway roi im,
+// trong khi laptop cung dat IP tinh tren dung mang do, hoi dung gateway do, lai tra ve binh
+// thuong. Dien mot DNS cong cong vao o dns2 dang bo trong thi lwIP tu hoi sang no khi cai dau
+// khong tra loi.
+//
+// Chi la duong LUI - dns1 van la gateway, mang binh thuong khong doi hanh vi gi.
+static const IPAddress DNS_FALLBACK(8, 8, 8, 8);
+
 // F6-style Basic Auth (ported from phòng Cân Tim), gates /save and /test_relay.
 char authUser[32] = "admin";
 char authPass[32] = "admin";
@@ -356,7 +366,7 @@ static bool connectWiFiAttempt(bool useStatic, bool verifyGateway, const char *s
         }
         // Gateway lam DNS1: voi "uu tien IP tinh" thi day la duong ket noi BINH THUONG (khong
         // con la fallback hiem gap), nen thieu DNS se lam hong MQTT/OSC neu nhap hostname.
-        WiFi.config(ip, gw, mask, gw);
+        WiFi.config(ip, gw, mask, gw, DNS_FALLBACK);
     }
     else
     {
@@ -798,6 +808,15 @@ void setup() {
   Serial.println(WiFi.softAPIP());
 
   timeInit();
+  // In DNS dang thuc su dung - xem dong DNS tren dashboard ve ly do.
+  if (WiFi.status() == WL_CONNECTED) {
+    LOG("DNS: %s / %s", WiFi.dnsIP(0).toString().c_str(), WiFi.dnsIP(1).toString().c_str());
+    if ((uint32_t)WiFi.dnsIP(0) == 0) {
+      LOG("DNS: bang DNS RONG - hostByName() se that bai NGAY, khong gui goi nao. "
+          "URL dung ten mien se im lang khong chay; dung IP thi van duoc.");
+    }
+  }
+
   setupWeb();
   oscUdp.begin(9000);
   mqttInit();
@@ -1037,7 +1056,7 @@ static void wifiReconnectTick()
     {
         IPAddress ip, gw, mask;
         if (ip.fromString(staticIP) && gw.fromString(staticGW) && mask.fromString(staticMask))
-            WiFi.config(ip, gw, mask, gw);
+            WiFi.config(ip, gw, mask, gw, DNS_FALLBACK);
     }
     else
     {

@@ -108,6 +108,23 @@ void handleData()
     data += " &middot; " + WiFi.localIP().toString();
     data += " &middot; <b style='color:" + String(mau) + "'>" + String(rssi) + " dBm (" + muc + ")</b>";
   }
+  // DNS server board DANG THUC SU dung. Truoc day khong hien o dau ca - khong Serial, khong
+  // Web UI - nen khi "nap tu link bang ten mien" im lang that bai thi khong co cach nao biet
+  // board dang hoi ai. 0.0.0.0 la dau hieu quyet dinh: bang DNS rong thi hostByName() tra loi
+  // NGAY, khong gui goi nao ra - dung kieu "server khong thay request nao".
+  if (WiFi.status() == WL_CONNECTED) {
+    IPAddress d1 = WiFi.dnsIP(0);
+    IPAddress d2 = WiFi.dnsIP(1);
+    data += "<b>DNS:</b> ";
+    if ((uint32_t)d1 == 0) {
+      data += "<span style='color:red;font-weight:bold'>TRỐNG</span> — không phân giải được tên miền";
+    } else {
+      data += d1.toString();
+      if ((uint32_t)d2 != 0) data += " &middot; " + d2.toString();
+    }
+    data += "<br>";
+  }
+
   data += "<br>";
 
   // Bang muc song 3 AP tu lan quet GAN NHAT (khong quet o day - xem globals.h). Liet ke ca AP
