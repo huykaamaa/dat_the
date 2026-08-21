@@ -677,6 +677,7 @@ static void wifiReconnectTick()
     static unsigned long lostSince = 0;
     static bool retrying = false;
     static unsigned long retryStart = 0;
+    static bool apShutdownWanted = false;  // vao lai mang roi, con no viec tat AP du phong
 
     if (WiFi.status() == WL_CONNECTED)
     {
@@ -687,9 +688,24 @@ static void wifiReconnectTick()
             // thoi che do AP du phong.
             retrying = false;
             apFallbackActive = false;
+            apShutdownWanted = true;
             WiFi.setAutoReconnect(true);
             Serial.printf("WiFi: vao lai duoc '%s' - %s\r\n", wifiSSID,
                           WiFi.localIP().toString().c_str());
+        }
+
+        // Da vao lai mang thi AP du phong het viec - tat di, khong de "DAT_THE" phat mai. Bo
+        // buoc nay thi board nam luon o AP_STA: SSID cuu ho van hien du mang da lanh (gay hieu
+        // nham la board van dang hong), va hai ben tiep tuc chia nhau mot con radio.
+        //
+        // Hoan neu dang co may noi vao: nguoi ta co the dang mo Web UI qua chinh AP do de sua
+        // cau hinh - cat song duoi chan ho la pha hoai. Lan tick sau ho roi ra thi tat.
+        if (apShutdownWanted && WiFi.softAPgetStationNum() == 0)
+        {
+            apShutdownWanted = false;
+            WiFi.softAPdisconnect(true);
+            WiFi.mode(WIFI_STA);
+            Serial.println("WiFi: da vao lai mang - tat AP du phong 'DAT_THE'");
         }
         return;
     }
