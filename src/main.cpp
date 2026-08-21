@@ -759,18 +759,22 @@ static void wifiReconnectTick()
                           WiFi.localIP().toString().c_str());
         }
 
-        // Da vao lai mang thi AP du phong het viec - tat di, khong de "DAT_THE" phat mai. Bo
-        // buoc nay thi board nam luon o AP_STA: SSID cuu ho van hien du mang da lanh (gay hieu
-        // nham la board van dang hong), va hai ben tiep tuc chia nhau mot con radio.
+        // Da vao lai mang thi "DAT_THE" het viec - de no phat tiep la noi doi (SSID cuu ho van
+        // hien du mang da lanh), ma tat han thi lai giau mat dia chi moi. Doi sang DIAG AP:
+        // cung cai co san luc boot, ten chinh la IP - "DATTHE-DHCP-192.168.99.214". Vua bao
+        // "da vao lai duoc", vua cho dia chi de mo Web UI ma khong can Serial. Tu tat sau
+        // DIAG_AP_DURATION_MS giong luc boot (xem loop()).
+        //
+        // isFallback lay theo staticFirst vi do dung la cach cu huych ben duoi dat IP: co tick
+        // thi dat IP tinh, khong thi de DHCP cap.
         //
         // Hoan neu dang co may noi vao: nguoi ta co the dang mo Web UI qua chinh AP do de sua
-        // cau hinh - cat song duoi chan ho la pha hoai. Lan tick sau ho roi ra thi tat.
+        // cau hinh - doi SSID duoi chan ho la da ho ra. Lan tick sau ho roi ra thi doi.
         if (apShutdownWanted && WiFi.softAPgetStationNum() == 0)
         {
             apShutdownWanted = false;
             WiFi.softAPdisconnect(true);
-            WiFi.mode(WIFI_STA);
-            Serial.println("WiFi: da vao lai mang - tat AP du phong 'DAT_THE'");
+            startDiagAp(staticFirst);
         }
         return;
     }
