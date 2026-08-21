@@ -747,6 +747,7 @@ static void wifiReconnectTick()
     static unsigned long retryStart = 0;
     static bool apShutdownWanted = false;  // vao lai mang roi, con no viec tat AP du phong
     static unsigned long apRetryInterval = AP_RETRY_FIRST_MS;
+    static uint8_t windowsTried = 0;   // so cua so da mo trong su co nay - xem doan quyet dinh quet
 
     if (WiFi.status() == WL_CONNECTED)
     {
@@ -759,8 +760,12 @@ static void wifiReconnectTick()
             apFallbackActive = false;
             apShutdownWanted = true;
             apRetryInterval = AP_RETRY_FIRST_MS;  // su co coi nhu qua, lan sau lai thu som
+            windowsTried = 0;
             WiFi.setAutoReconnect(true);
-            Serial.printf("WiFi: vao lai duoc '%s' - %s\r\n", wifiSSID,
+            // In SSID THUC TE dang bam vao, khong phai wifiSSID: cu thu co the da vao bang mot
+            // AP du phong (xem doan quet ben duoi), ma dong log lai bao ten SSID chinh thi no
+            // noi doi dung luc duy nhat nguoi ta doc no - luc di xem board dang nam o AP nao.
+            Serial.printf("WiFi: vao lai duoc '%s' - %s\r\n", WiFi.SSID().c_str(),
                           WiFi.localIP().toString().c_str());
         }
 
@@ -804,6 +809,15 @@ static void wifiReconnectTick()
             Serial.printf("WiFi: thu lai khong an - dong STA, giu AP du phong (thu lai sau %lus)\r\n",
                           apRetryInterval / 1000UL);
         }
+        else
+        {
+            // Khong o AP du phong ma cua so van hong: hien tai khong co duong nao di toi day
+            // (moc 30 giay luon bat AP truoc), nhung neu de trong thi mot lan sua nho o tren se
+            // lam autoReconnect ket o false VINH VIEN - radio thoi tu do lai, ma khong co dong
+            // log nao noi len dieu do. Tra quyen lai cho core.
+            WiFi.setAutoReconnect(true);
+            WiFi.mode(WIFI_STA);
+        }
         return;
     }
 
@@ -835,6 +849,7 @@ static void wifiReconnectTick()
         Serial.println("WiFi: mat song 30 giay - bat AP 'DAT_THE' de con duong vao Web UI");
         startAP();
         apRetryInterval = AP_RETRY_FIRST_MS;
+        windowsTried = 0;
         lostSince = millis();  // cua so thu lai dau tien tinh tu day
         return;
     }
@@ -874,8 +889,19 @@ static void wifiReconnectTick()
     const char *trySsid = wifiSSID;
     const char *tryPass = wifiPASS;
 
+    // CUA SO DAU TIEN THI KHONG QUET. WiFi.scanNetworks() la ham CHAN - no giu loop() 2-3 giay,
+    // tuc checkSensors() ngung chay va board mu voi the trong khoang do. Ca phien hom nay la de
+    // bo cai cua so chet 20-40 giay cua reset; de len mot cua so chet 2-3 giay moi lan thu lai
+    // thi di lui.
+    //
+    // Truong hop thuong gap nhat - AP chinh vua song lai - khong can quet gi ca: cu goi thang
+    // begin() voi SSID chinh, khong ton mot mili giay dong bang nao. Chi khi cu do hong (tuc AP
+    // chinh that su khong con) moi bo ra 2-3 giay de quet xem co AP du phong nao khong.
+    windowsTried++;
+    bool doScan = (windowsTried > 1);
+
     CredRef list[1 + sizeof(wifiBackups) / sizeof(wifiBackups[0])];
-    size_t n = buildCredList(list, sizeof(list) / sizeof(list[0]));
+    size_t n = doScan ? buildCredList(list, sizeof(list) / sizeof(list[0])) : 0;
     if (n > 0)
     {
         int scanned = filterByScan(list, n);
