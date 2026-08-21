@@ -61,11 +61,13 @@ bool otaUrlPending = false;
 // Xem globals.h. Mac dinh BAT.
 bool nightlyRebootEnabled = true;
 
-// Diagnostic AP: broadcasts the STA's IP as an AP SSID (password = apPASS) for a few minutes after connect
-// so an operator can read it off a phone's WiFi list instead of needing Serial (Cân Tim).
-static const unsigned long DIAG_AP_DURATION_MS = 5UL * 60UL * 1000UL;
+// Diagnostic AP: broadcasts the STA's IP as an AP SSID (password = apPASS) so an operator can
+// read it off a phone's WiFi list instead of needing Serial (Cân Tim). Phat MAI, khong tu tat.
 bool diagApActive = false;
-unsigned long diagApStartMs = 0;
+// Dia chi da duoc nhet vao TEN cua diag AP dang phat. Giu lai de biet khi nao ten do khong con
+// dung nua - xem doan lam moi trong loop(). Truoc day khong can vi AP tu tat sau 5 phut, gio no
+// phat mai nen mot ten sai se sai mai.
+IPAddress diagApIp;
 
 WebServer server(80);
 Preferences prefs;
@@ -617,8 +619,10 @@ bool connectWiFi(bool &usedStaticFallback)
 }
 
 // Diagnostic AP broadcasting the STA's current IP as its SSID, so an operator can read it
-// off a phone's WiFi scan list instead of needing Serial. Auto-off after
-// DIAG_AP_DURATION_MS, handled in loop().
+// off a phone's WiFi scan list instead of needing Serial.
+//
+// 2026-08-21: KHONG con tu tat sau 5 phut - phat mai de theo doi duoc board tu xa bat cu luc
+// nao. Doi lai SSID phai theo kip dia chi: xem diagApIp va doan lam moi trong loop().
 //
 // Dung chung apPASS voi AP cau hinh "DAT_THE" (thay vi de mo nhu truoc): SSID da lo dia chi
 // IP noi bo cho moi nguoi xung quanh quet thay, khong nen de bat ky ai cung vao thang duoc
@@ -626,14 +630,15 @@ bool connectWiFi(bool &usedStaticFallback)
 // thieu 8 ky tu - apPASS ngan hon thi softAP() se fail va mat luon duong vao nay.
 void startDiagAp(bool isFallback)
 {
-    String ssid = (isFallback ? "DATTHE-STATIC-" : "DATTHE-DHCP-") + WiFi.localIP().toString();
+    IPAddress ip = WiFi.localIP();
+    String ssid = (isFallback ? "DATTHE-STATIC-" : "DATTHE-DHCP-") + ip.toString();
 
     WiFi.mode(WIFI_AP_STA);
 
     if (WiFi.softAP(ssid.c_str(), apPASS))
     {
         diagApActive = true;
-        diagApStartMs = millis();
+        diagApIp = ip;
         Serial.print("Diag AP: broadcasting ");
         Serial.println(ssid);
     }
@@ -867,8 +872,8 @@ static void wifiReconnectTick()
         // Da vao lai mang thi "DAT_THE" het viec - de no phat tiep la noi doi (SSID cuu ho van
         // hien du mang da lanh), ma tat han thi lai giau mat dia chi moi. Doi sang DIAG AP:
         // cung cai co san luc boot, ten chinh la IP - "DATTHE-DHCP-192.168.99.214". Vua bao
-        // "da vao lai duoc", vua cho dia chi de mo Web UI ma khong can Serial. Tu tat sau
-        // DIAG_AP_DURATION_MS giong luc boot (xem loop()).
+        // "da vao lai duoc", vua cho dia chi de mo Web UI ma khong can Serial. No phat MAI,
+        // khong tu tat - xem startDiagAp().
         //
         // isFallback lay theo staticFirst vi do dung la cach cu huych ben duoi dat IP: co tick
         // thi dat IP tinh, khong thi de DHCP cap.
@@ -1144,12 +1149,20 @@ void loop() {
 
   wifiScanTick();
 
-  if (diagApActive && (millis() - diagApStartMs) >= DIAG_AP_DURATION_MS)
+  // Diag AP KHONG con tu tat sau 5 phut (2026-08-21) - no phat mai de theo doi board tu xa bat
+  // cu luc nao. Doi lai phai canh dia chi: ten cua no la IP luc TAO ra, ma DHCP doi IP giua
+  // chung thi cai ten do thanh mot dia chi khong ai toi duoc. Truoc day 5 phut la du ngan de
+  // chuyen nay khong kip xay ra; gio thi mot ten sai se sai mai.
+  //
+  // Chi lam moi khi IP THUC SU doi: goi lai softAP() se da van may dang noi vao AP ra, khong
+  // lam bua duoc.
+  if (diagApActive && WiFi.status() == WL_CONNECTED && WiFi.localIP() != diagApIp)
   {
-      WiFi.softAPdisconnect(true);
-      WiFi.mode(WIFI_STA);
-      diagApActive = false;
-      Serial.println("Diag AP: turned off");
+      Serial.print("Diag AP: IP da doi ");
+      Serial.print(diagApIp);
+      Serial.print(" -> ");
+      Serial.println(WiFi.localIP());
+      startDiagAp(staticFirst);
   }
 
   server.handleClient();

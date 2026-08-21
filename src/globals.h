@@ -87,7 +87,6 @@ extern bool otaUrlPending;
 void otaUrlTick();
 extern bool diagApActive;
 
-extern unsigned long diagApStartMs;
 
 // --- Tu reboot luc 00:00 gio Viet Nam (2026-08-21) ----------------------------------------
 // Mot cu don dep dinh ky vao luc khong co ai trong phong: tra lai bo nho da phan manh sau ca
