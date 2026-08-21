@@ -9,6 +9,7 @@ void handleUpdateFinish();
 
 // Reset mem board qua Web UI (ESP.restart()). Gated giong cac route doi trang thai khac.
 void handleScan();
+void handleLog();
 void handleReboot();
 
 // MQTT/OSC test: ban lan luot SENSOR_NUM vi tri ON roi SENSOR_NUM vi tri OFF (ported tu

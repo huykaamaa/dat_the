@@ -617,6 +617,16 @@ void handleScan() {
   server.send(302, "text/plain", "");
 }
 
+// Do vong dem log ra text tho. Co requireAuth: log chua ten SSID, dia chi IP/broker va dien
+// bien cau hinh - khong nen de bat ky ai trong tam song doc duoc.
+//
+// text/plain chu khong phai HTML: khoi phai escape, va trinh duyet hien nguyen van khong dien
+// giai gi - dung cai can khi doc log.
+void handleLog() {
+  if (!requireAuth()) return;
+  server.send(200, "text/plain; charset=utf-8", logDump());
+}
+
 void handleReboot() {
   if (!requireAuth()) return;
   server.send(200, "text/html",
@@ -635,6 +645,7 @@ void setupWeb() {
     server.on("/update", HTTP_POST, handleUpdateFinish, handleUpdateUpload);
     server.on("/update_url", HTTP_POST, handleUpdateUrl);
     server.on("/scan", HTTP_POST, handleScan);
+    server.on("/log", HTTP_GET, handleLog);
     server.on("/reboot", HTTP_POST, handleReboot);
 
     // /play va /stop doi trang thai vat ly cua phong (nhac dang chay giua game) nen phai gated
