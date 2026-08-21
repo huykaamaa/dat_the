@@ -89,6 +89,27 @@ extern bool diagApActive;
 
 extern unsigned long diagApStartMs;
 
+// --- Tu reboot luc 00:00 gio Viet Nam (2026-08-21) ----------------------------------------
+// Mot cu don dep dinh ky vao luc khong co ai trong phong: tra lai bo nho da phan manh sau ca
+// ngay chay, dut cac ket noi MQTT/OSC treo lung lung, va di lai TU DAU luong chon AP trong
+// connectWiFi(). Cai cuoi la ly do chinh: board dang bam vao AP nao thi no nam nguyen do, kho ng
+// tu nhay ve AP uu tien cao hon khi AP do song lai - vi autoReconnect chi can thiep luc MAT ket
+// noi, khong so sanh AP nao tot hon.
+//
+// Gio lay tu NTP. Mang KHONG co internet thi khong bao gio dong bo duoc va tinh nang nay im
+// lang khong chay - dashboard hien "chua dong bo" de nhin la biet, khong phai doan. Mui gio ep
+// cung "ICT-7" (POSIX TZ dao dau: UTC+7 viet thanh -7), Viet Nam khong co DST nen khong can
+// luat doi gio.
+//
+// Chan vong lap reboot bang UPTIME chu khong bang co luu qua reset: reboot xong van con trong
+// khung 00:00-00:59, boot len thay dung gio do se reboot tiep. Doi uptime > 90 phut thi khung
+// do da di qua het truoc khi board du dieu kien lan nua - khong can bo nho song qua reset,
+// khong magic word, khong co gi de hong.
+extern bool nightlyRebootEnabled;   // o tick tren Web UI (NVS key "night_reboot"), mac dinh BAT
+void timeInit();
+// Chuoi gio dia phuong cho dashboard, vd "21/08 15:32". NULL neu chua dong bo duoc NTP.
+const char *localTimeStr();
+
 // MQTT - ported tu gia_sach (ban goc, truoc khi rut tu 6 xuong 2 sensor), tu than gia_sach
 // lay hang tang MQTT client/OSC encode nay tu can_tim.
 //

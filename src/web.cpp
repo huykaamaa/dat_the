@@ -107,6 +107,29 @@ void handleData()
   }
   data += "<br>";
 
+  // Gio NTP. Hien ca khi CHUA dong bo duoc, va noi ro la chua - vi do la dieu kien duy nhat de
+  // cai reboot 00:00 chay duoc. Khong hien thi operator se tuong no dang chay trong khi no dang
+  // im lang khong lam gi (mang show khep kin thi khong ra duoc NTP tren Internet).
+  data += "<b>Giờ:</b> ";
+  {
+    const char *tstr = localTimeStr();
+    if (tstr) {
+      data += "<span style='color:#2e7d32;font-weight:bold'>" + String(tstr) + "</span>";
+      data += " <span style='font-size:12px;color:#64748b'>(VN)</span>";
+    } else {
+      data += "<span style='color:#b45309'>chưa đồng bộ NTP</span>";
+    }
+    data += " &nbsp;|&nbsp; <b>Reboot 00:00:</b> ";
+    if (!nightlyRebootEnabled) {
+      data += "<span style='color:gray'>TẮT</span>";
+    } else if (!tstr) {
+      data += "<span style='color:#b45309'>không chạy được (chưa có giờ)</span>";
+    } else {
+      data += "<span style='color:#2e7d32'>BẬT</span>";
+    }
+  }
+  data += "<br>";
+
   data += "<b>Music:</b> ";
   data += isPlaying
           ? "<span style='color:#2e7d32;font-weight:bold'>PLAYING</span>"
@@ -214,6 +237,7 @@ void handleSave() {
   saveIpArg("static_mask", staticMask, sizeof(staticMask), staticAddrInvalid);
 
   staticFirst = server.hasArg("static_first");
+  nightlyRebootEnabled = server.hasArg("night_reboot");
 
   // Admin Auth - password field is always rendered blank; only overwrite if the operator
   // actually typed a new one.
@@ -596,6 +620,7 @@ int saveConfig() {
   if (!prefs.putString("static_gw", staticGW)) fails++;
   if (!prefs.putString("static_mask", staticMask)) fails++;
   if (!prefs.putBool(NVS_KEY("static_first"), staticFirst)) fails++;
+  if (!prefs.putBool(NVS_KEY("night_reboot"), nightlyRebootEnabled)) fails++;
   if (!prefs.putString("auth_user", authUser)) fails++;
   if (!prefs.putString("auth_pass", authPass)) fails++;
   if (!prefs.putString(NVS_KEY("ota_url"), otaUrl)) fails++;
@@ -663,6 +688,7 @@ void loadConfig() {
   strncpy(staticMask, prefs.getString("static_mask", staticMask).c_str(), sizeof(staticMask) - 1);
   staticMask[sizeof(staticMask) - 1] = '\0';
   staticFirst = prefs.getBool(NVS_KEY("static_first"), staticFirst);
+  nightlyRebootEnabled = prefs.getBool(NVS_KEY("night_reboot"), nightlyRebootEnabled);
   strncpy(authUser, prefs.getString("auth_user", authUser).c_str(), sizeof(authUser) - 1);
   authUser[sizeof(authUser) - 1] = '\0';
   strncpy(authPass, prefs.getString("auth_pass", authPass).c_str(), sizeof(authPass) - 1);

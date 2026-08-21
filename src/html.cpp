@@ -206,6 +206,12 @@ void handleRoot()
   // mqtt_pass va auth_pass ben duoi. De trong = giu nguyen (xem saveStringArg trong web.cpp).
   html += "<div class='field'><label>WiFi Password</label><input type='password' name='pass' placeholder='(giữ nguyên nếu để trống)'></div>";
   html += "</div>";
+  html += "<div class='sub'>Tự reboot ban đêm</div>";
+  html += "<div class='single'><label><input type='checkbox' name='night_reboot' value='1'";
+  html += nightlyRebootEnabled ? " checked" : "";
+  html += "> Tự khởi động lại lúc 00:00 (giờ Việt Nam)</label></div>";
+  html += "<div class='note'>Một cú dọn dẹp định kỳ lúc phòng đã đóng: trả lại bộ nhớ phân mảnh sau cả ngày chạy, dứt các kết nối MQTT/OSC treo, và <b>đi lại từ đầu bước chọn AP</b> - board đang bám vào AP dự phòng nào thì nó nằm nguyên đó, không tự nhảy về AP ưu tiên cao hơn khi AP đó sống lại. <b>Còn thẻ trên bàn hoặc nhạc đang chạy thì hoãn</b>, thử lại trong suốt khung 00:00-00:59; rảnh không nổi thì bỏ qua đêm đó chứ không ép.</div>";
+  html += "<div class='note'>Giờ lấy từ NTP qua Internet. <b>Mạng không ra được Internet thì tính năng này im lặng không chạy</b> - xem dòng \"Giờ\" trên bảng trạng thái ở đầu trang, hiện \"chưa đồng bộ NTP\" là nó đang không hoạt động. Múi giờ ép cứng UTC+7, không có đổi giờ theo mùa.</div>";
   html += "<div class='sub'>IP tĩnh dự phòng (khi DHCP thất bại)</div>";
   html += "<div class='single'><label><input type='checkbox' name='static_first' value='1'";
   html += staticFirst ? " checked" : "";

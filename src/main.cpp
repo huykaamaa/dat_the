@@ -50,6 +50,9 @@ uint32_t fwSize = 0;
 char otaUrl[96] = "";
 bool otaUrlPending = false;
 
+// Xem globals.h. Mac dinh BAT.
+bool nightlyRebootEnabled = true;
+
 // Diagnostic AP: broadcasts the STA's IP as an AP SSID (password = apPASS) for a few minutes after connect
 // so an operator can read it off a phone's WiFi list instead of needing Serial (Cân Tim).
 static const unsigned long DIAG_AP_DURATION_MS = 5UL * 60UL * 1000UL;
@@ -699,6 +702,7 @@ void setup() {
 
   Serial.println(WiFi.softAPIP());
 
+  timeInit();
   setupWeb();
   oscUdp.begin(9000);
   mqttInit();
@@ -951,11 +955,102 @@ static void wifiReconnectTick()
     retryStart = millis();
 }
 
+// ======================================================================
+// GIO NTP + TU REBOOT LUC 00:00 GIO VIET NAM
+// ======================================================================
+// Xem giai thich day du trong globals.h.
+static const char *TZ_VIETNAM = "ICT-7";  // POSIX TZ dao dau: UTC+7 viet thanh -7
+
+void timeInit()
+{
+    // Goi mot lan trong setup(), KE CA khi chua co mang: SNTP tu thu lai dinh ky trong nen, nen
+    // board vao mang muon (hoac vao lai sau mot cu mat song) van dong bo duoc ma khong can goi
+    // lai o dau ca.
+    //
+    // Ba server de neu mot cai chet thi con cai khac; deu la dia chi INTERNET, mang show khep
+    // kin khong ra duoc Internet thi tinh nang reboot 00:00 se khong bao gio chay - dashboard
+    // hien "chua dong bo" cho biet dieu do.
+    configTzTime(TZ_VIETNAM, "pool.ntp.org", "time.google.com", "time.cloudflare.com");
+    Serial.println("NTP: da gui yeu cau dong bo (gio Viet Nam, UTC+7)");
+}
+
+// Doc gio dia phuong. Tra ve false neu chua dong bo duoc.
+//
+// KHONG dung getLocalTime() cua core du no tien hon: ben trong no co delay(10) moi vong cho, va
+// voi timeout 0 thi khi CHUA dong bo duoc no van an tron mot nhip delay do truoc khi tra false.
+// Ham nay chay moi vong loop() va con duoc handleData() goi 2 lan/giay, nen 10ms do se bam vao
+// dung cho dau: audioUpdate() khong kip nap dem va nhac giat - dung o mang khong co Internet,
+// tuc noi ma no khong bao gio dong bo duoc va cai gia do keo dai mai mai.
+//
+// time() + localtime_r() la thu ma getLocalTime() goi ben trong, chi khac la khong ngu.
+//
+// Moc nam 2024: dong ho chua dong bo bat dau tu 1970, nen bat ky nam nao gan hien tai cung du
+// de phan biet "da co gio that" voi "dang dem tu luc boot".
+static bool localTimeNow(struct tm &out)
+{
+    time_t now;
+    time(&now);
+    localtime_r(&now, &out);
+    return (out.tm_year + 1900) >= 2024;
+}
+
+const char *localTimeStr()
+{
+    static char buf[16];
+    struct tm t;
+    if (!localTimeNow(t))
+        return nullptr;
+    snprintf(buf, sizeof(buf), "%02d/%02d %02d:%02d",
+             t.tm_mday, t.tm_mon + 1, t.tm_hour, t.tm_min);
+    return buf;
+}
+
+static void nightlyRebootTick()
+{
+    // Uptime toi thieu - day la thu duy nhat chan vong lap reboot, xem globals.h. 90 phut phu
+    // het khung 00:00-00:59 con du bien.
+    const unsigned long MIN_UPTIME_MS = 90UL * 60UL * 1000UL;
+
+    if (!nightlyRebootEnabled)
+        return;
+    if (millis() < MIN_UPTIME_MS)
+        return;
+
+    struct tm t;
+    if (!localTimeNow(t))
+        return;      // chua co gio that thi khong dam reboot theo doan
+    if (t.tm_hour != 0)
+        return;      // khung 00:00 - 00:59
+
+    // Dang ghi firmware: reboot vao giua se de lai mot ban firmware ghi do dang.
+    if (otaUrlPending)
+        return;
+
+    // Nua dem thi phong le ra da dong, nhung buoi dien keo dai qua gio thi van phai nhuong. Con
+    // the tren ban / nhac con chay = con nguoi choi, hoan lai. Khung 00:00-00:59 dai mot tieng
+    // nen chi can ranh mot lan bat ky trong do la reboot duoc; ranh khong noi thi bo qua dem nay
+    // chu khong ep.
+    for (int i = 0; i < SENSOR_NUM; i++)
+    {
+        if (relayState[i])
+            return;
+    }
+    if (isPlaying || stableState)
+        return;
+
+    Serial.printf(">>> %02d/%02d %02d:%02d - tu reboot dinh ky luc nua dem <<<\r\n",
+                  t.tm_mday, t.tm_mon + 1, t.tm_hour, t.tm_min);
+    delay(200);  // cho dong log tren ra het khoi UART truoc khi cat dien
+    ESP.restart();
+}
+
 void loop() {
 
   checkSensors();
 
   wifiReconnectTick();
+
+  nightlyRebootTick();
 
   if (diagApActive && (millis() - diagApStartMs) >= DIAG_AP_DURATION_MS)
   {
