@@ -30,6 +30,8 @@ static const WifiCred wifiBackups[] = {
     {"Tenda_392EA0", "zxcvzxcv"},
 };
 static const size_t wifiBackupCount = sizeof(wifiBackups) / sizeof(wifiBackups[0]);
+// SSID chinh + toan bo AP du phong: kich thuoc toi da cua danh sach ung vien.
+static const size_t WIFI_CRED_MAX = 1 + sizeof(wifiBackups) / sizeof(wifiBackups[0]);
 
 // F19-style static-IP fallback (ported from phòng Cân Tim): same 192.168.99.0/24 as this
 // room's old OSC target default (192.168.99.187) and Cân Tim's own defaults (.199 MQTT
@@ -427,8 +429,9 @@ static bool connectWiFiAttempt(bool useStatic, bool verifyGateway, const char *s
 // viec cua tang mang; gop hai cai vao mot vong lap la tron hai thu doc lap nhau.
 //
 // Gio tach lam hai:
-//   1. QUET mot lan (~2-3s) xem AP nao thuc su co mat, roi chi thu nhung cai do - theo dung thu
-//      tu uu tien cu (SSID cau hinh tren Web UI truoc, roi den cac AP du phong).
+//   1. QUET mot lan (~2-3s) xem AP nao thuc su co mat, roi thu nhung cai do theo THU TU SONG
+//      MANH DAN - vao duoc AP nao cung ra cung mot LAN nen khong co ly do chon cai yeu hon.
+//      Bang diem thi giu thu tu uu tien cu (SSID Web UI truoc, roi cac AP du phong).
 //   2. Xin IP: DHCP tren tung AP co mat; het ma van khong ra thi IP tinh MOT LAN duy nhat.
 //
 // Quet khong thay gi (SSID an, hoac quet loi) thi quay ve thu mu ca ba nhu cu - quet la de di
@@ -457,7 +460,7 @@ static size_t buildCredList(CredRef *out, size_t maxOut)
 }
 
 // Loc danh sach tren xuong con nhung SSID quet thay. Tra ve:
-//    > 0  so SSID cua minh dang co mat (list da duoc rut gon, giu thu tu uu tien)
+//    > 0  so SSID cua minh dang co mat - list rut gon va SAP LAI THEO SONG MANH NHAT
 //    = 0  quet duoc nhung KHONG co cai nao cua minh - AP that su khong co mat
 //    < 0  quet loi hoac khong thay gi ca - khong ket luan duoc, caller nen thu mu
 //
@@ -474,18 +477,32 @@ static int filterByScan(CredRef *list, size_t n)
         return -1;
     }
 
+    // Giu lai nhung SSID cua minh co mat, kem RSSI MANH NHAT tim duoc cho tung cai. Manh nhat
+    // chu khong phai cai gap dau tien: mot SSID co the hien ra nhieu lan trong ket qua quet neu
+    // mang co nhieu AP trung ten, va cai dang so sanh phai la cai board se thuc su bam vao.
+    int32_t bestRssi[WIFI_CRED_MAX];
     size_t keep = 0;
     for (size_t i = 0; i < n; i++)
     {
+        bool seen = false;
+        int32_t best = 0;
         for (int j = 0; j < found; j++)
         {
             if (WiFi.SSID(j) == list[i].ssid)
             {
-                if (keep != i)
-                    list[keep] = list[i];
-                keep++;
-                break;
+                int32_t r = WiFi.RSSI(j);
+                if (!seen || r > best)
+                {
+                    best = r;
+                    seen = true;
+                }
             }
+        }
+        if (seen)
+        {
+            list[keep] = list[i];
+            bestRssi[keep] = best;
+            keep++;
         }
     }
     WiFi.scanDelete();
@@ -496,10 +513,32 @@ static int filterByScan(CredRef *list, size_t n)
         return 0;
     }
 
+    // Sap theo RSSI GIAM DAN - board vao cai song khoe nhat thay vi cai dung dau danh sach uu
+    // tien. Hop le vi ca ba SSID la ba AP cua CUNG MOT MANG (xem wifiBackups): vao cai nao cung
+    // ra cung mot LAN, nen khong co ly do gi de chon cai song yeu hon.
+    //
+    // Insertion sort voi phep so sanh CHAT (chi day khi thuc su yeu hon) nen no ON DINH: hai AP
+    // cung muc song thi giu nguyen thu tu uu tien cu, tuc doaz van thang. Danh sach dai 3 phan
+    // tu, khong can thuat toan gi hon.
+    for (size_t i = 1; i < keep; i++)
+    {
+        CredRef c = list[i];
+        int32_t r = bestRssi[i];
+        size_t j = i;
+        while (j > 0 && bestRssi[j - 1] < r)
+        {
+            list[j] = list[j - 1];
+            bestRssi[j] = bestRssi[j - 1];
+            j--;
+        }
+        list[j] = c;
+        bestRssi[j] = r;
+    }
+
     Serial.printf("thay %d AP, %u cai thuoc danh sach:", found, (unsigned)keep);
     for (size_t i = 0; i < keep; i++)
-        Serial.printf(" %s", list[i].ssid);
-    Serial.println();
+        Serial.printf(" %s(%d)", list[i].ssid, (int)bestRssi[i]);
+    Serial.printf(" -> chon '%s'\r\n", list[0].ssid);
     return (int)keep;
 }
 
@@ -508,7 +547,7 @@ bool connectWiFi(bool &usedStaticFallback)
 {
     usedStaticFallback = false;
 
-    CredRef list[1 + sizeof(wifiBackups) / sizeof(wifiBackups[0])];
+    CredRef list[WIFI_CRED_MAX];
     size_t n = buildCredList(list, sizeof(list) / sizeof(list[0]));
     if (n == 0)
         return false;
@@ -905,14 +944,14 @@ static void wifiReconnectTick()
     windowsTried++;
     bool doScan = (windowsTried > 1);
 
-    CredRef list[1 + sizeof(wifiBackups) / sizeof(wifiBackups[0])];
+    CredRef list[WIFI_CRED_MAX];
     size_t n = doScan ? buildCredList(list, sizeof(list) / sizeof(list[0])) : 0;
     if (n > 0)
     {
         int scanned = filterByScan(list, n);
         if (scanned > 0)
         {
-            // list[0] = SSID uu tien cao nhat trong so nhung cai DANG co mat.
+            // list[0] = SSID co song MANH NHAT trong so nhung cai dang co mat.
             trySsid = list[0].ssid;
             tryPass = list[0].pass;
         }
