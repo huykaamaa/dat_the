@@ -731,6 +731,20 @@ static void wifiReconnectTick()
         lostSince = millis();
         return;
     }
+
+    // Diag AP phat ten kieu "DATTHE-DHCP-192.168.1.50" - dia chi board co LUC BOOT, va no cu
+    // phat du 5 phut bat ke ket noi con song hay khong. Mat song roi ma van khoe DHCP + IP la
+    // noi doi dung luc nguoi ta dang di tim xem board con mang khong. Rot song qua 30 giay thi
+    // tat, khong doi het 5 phut. Cho 30 giay chu khong tat ngay de mot cu chop nhoang (auto-
+    // reconnect vao lai sau vai giay) khong lam mat cai AP van dang huu ich.
+    if (diagApActive && (millis() - lostSince) >= 30000UL && WiFi.softAPgetStationNum() == 0)
+    {
+        WiFi.softAPdisconnect(true);
+        WiFi.mode(WIFI_STA);
+        diagApActive = false;
+        Serial.println("Diag AP: tat vi da mat song - ten cua no dang khoe mot IP khong con dung");
+    }
+
     if ((millis() - lostSince) < WIFI_NUDGE_MS)
         return;
 
@@ -744,9 +758,31 @@ static void wifiReconnectTick()
 
     lostSince = millis();  // len lich cu huych ke tiep sau 5 phut nua
 
-    // Giu dung lua chon cua operator: co tick "uu tien IP tinh" thi dat lai IP tinh, khong thi
-    // xoa cau hinh IP de bat lai DHCP client (neu khong, bo IP tinh cua lan fallback truoc do
-    // van con hieu luc va cu huych nay se khong bao gio xin duoc IP moi).
+    if (!apFallbackActive)
+    {
+        // Mat mang 5 phut ma dang KHONG co AP nao => khong con duong nao vao Web UI. Truoc day
+        // watchdog reset lo viec nay mot cach gian tiep: reset -> boot that bai -> startAP().
+        // Bo watchdog roi thi phai bat AP thang o day, neu khong board mat mang giua chung se
+        // cam han cho toi khi co nguoi rut dien.
+        //
+        // diagApActive = false truoc: neu diag AP con dang phat, doan tat diag AP trong loop()
+        // se goi WiFi.mode(WIFI_STA) va giet luon cai AP cuu ho vua bat.
+        diagApActive = false;
+        Serial.println("WiFi: mat song 5 phut - bat AP cuu ho de con duong vao Web UI");
+        startAP();
+    }
+
+    // Mo cua so: bat STA len canh AP. autoReconnect PHAI tat, neu khong thi sau khi cu thu nay
+    // hong, core tu goi connect() lai mai mai (NO_AP_FOUND nam trong dien "thu lai") va AP du
+    // phong chet theo - dung loi da mac hom nay.
+    WiFi.setAutoReconnect(false);
+    WiFi.mode(WIFI_AP_STA);
+
+    // Dat cau hinh IP SAU khi da chot mode: doi mode co the xoa cau hinh netif cua STA, dat
+    // truoc thi cu huych nay chay voi cau hinh cu. Giu dung lua chon cua operator - co tick "uu
+    // tien IP tinh" thi dat lai IP tinh, khong thi xoa cau hinh IP de bat lai DHCP client (neu
+    // khong, bo IP tinh cua lan fallback truoc do van con hieu luc va se khong bao gio xin duoc
+    // IP moi).
     if (staticFirst)
     {
         IPAddress ip, gw, mask;
@@ -756,15 +792,6 @@ static void wifiReconnectTick()
     else
     {
         WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE);
-    }
-
-    if (apFallbackActive)
-    {
-        // Mo cua so: bat STA len canh AP. autoReconnect PHAI tat, neu khong thi sau khi cu thu
-        // nay hong, core tu goi connect() lai mai mai (NO_AP_FOUND nam trong dien "thu lai") va
-        // AP du phong chet theo - dung loi da mac hom nay.
-        WiFi.setAutoReconnect(false);
-        WiFi.mode(WIFI_AP_STA);
     }
 
     Serial.println("WiFi: mat song 5 phut - thu goi lai begin() (khong reset)");
