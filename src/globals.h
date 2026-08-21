@@ -107,6 +107,25 @@ extern unsigned long diagApStartMs;
 // khong magic word, khong co gi de hong.
 extern bool nightlyRebootEnabled;   // o tick tren Web UI (NVS key "night_reboot"), mac dinh BAT
 void timeInit();
+
+// --- Bang muc song cua 3 AP, hien tren dashboard (2026-08-21) -----------------------------
+// KHONG quet moi lan /data duoc goi: scanNetworks() chan 2-3 giay ma dashboard poll 2 lan/giay.
+// Thay vao do luu lai ket qua cua lan quet GAN NHAT - von da co san, vi filterByScan() chay o
+// moi lan boot va o moi cua so thu lai. Kem theo moc thoi gian de biet so lieu cu bao nhieu.
+//
+// Muon so lieu tuoi thi bam nut "Quét lại sóng" tren Web UI: no chi dat co, wifiScanTick()
+// trong loop() moi thuc su quet - giong cach otaUrlPending lam, de handler HTTP tra loi xong
+// roi hang moi chan.
+struct WifiSeenInfo {
+  const char *ssid;
+  int32_t rssi;
+  bool present;   // false = lan quet do KHONG thay AP nay
+};
+extern WifiSeenInfo wifiSeen[];
+extern size_t wifiSeenCount;
+extern unsigned long wifiSeenAt;   // millis() luc quet; 0 = chua quet lan nao
+extern bool wifiScanRequested;     // dat tu handleScan(), wifiScanTick() doc roi xoa
+void wifiScanTick();
 // Chuoi gio dia phuong cho dashboard, vd "21/08 15:32". NULL neu chua dong bo duoc NTP.
 const char *localTimeStr();
 

@@ -33,6 +33,12 @@ static const size_t wifiBackupCount = sizeof(wifiBackups) / sizeof(wifiBackups[0
 // SSID chinh + toan bo AP du phong: kich thuoc toi da cua danh sach ung vien.
 static const size_t WIFI_CRED_MAX = 1 + sizeof(wifiBackups) / sizeof(wifiBackups[0]);
 
+// Bang muc song cua cac AP tu lan quet gan nhat - xem globals.h. filterByScan() ghi vao day.
+WifiSeenInfo wifiSeen[WIFI_CRED_MAX];
+size_t wifiSeenCount = 0;
+unsigned long wifiSeenAt = 0;
+bool wifiScanRequested = false;
+
 // F19-style static-IP fallback (ported from phòng Cân Tim): same 192.168.99.0/24 as this
 // room's old OSC target default (192.168.99.187) and Cân Tim's own defaults (.199 MQTT
 // broker .225) - .198 is a judgment call to avoid colliding with those, not a confirmed
@@ -482,6 +488,7 @@ static int filterByScan(CredRef *list, size_t n)
     // mang co nhieu AP trung ten, va cai dang so sanh phai la cai board se thuc su bam vao.
     int32_t bestRssi[WIFI_CRED_MAX];
     size_t keep = 0;
+    wifiSeenCount = 0;
     for (size_t i = 0; i < n; i++)
     {
         bool seen = false;
@@ -498,6 +505,17 @@ static int filterByScan(CredRef *list, size_t n)
                 }
             }
         }
+
+        // Ghi vao bang cho dashboard TRUOC khi rut gon: bang do phai liet ke ca nhung AP KHONG
+        // thay, vi "khong thay" chinh la thong tin can nhat khi di do song.
+        if (wifiSeenCount < WIFI_CRED_MAX)
+        {
+            wifiSeen[wifiSeenCount].ssid = list[i].ssid;
+            wifiSeen[wifiSeenCount].rssi = seen ? best : 0;
+            wifiSeen[wifiSeenCount].present = seen;
+            wifiSeenCount++;
+        }
+
         if (seen)
         {
             list[keep] = list[i];
@@ -506,6 +524,7 @@ static int filterByScan(CredRef *list, size_t n)
         }
     }
     WiFi.scanDelete();
+    wifiSeenAt = millis();
 
     if (keep == 0)
     {
@@ -647,6 +666,38 @@ void startAP()
     Serial.println(WiFi.softAPIP());
     // Nhip thu lai LUI DAN 1-2-4-5 phut (xem wifiReconnectTick()), khong con co dinh 5 phut.
     Serial.printf("Se thu lai '%s' theo nhip lui dan (cua so ngan, AP van giu)\r\n", wifiSSID);
+}
+
+// Nut "Quét lại sóng" tren Web UI. handleScan() chi dat co, viec quet lam o day - giong cach
+// otaUrlPending lam: scanNetworks() chan 2-3 giay, goi thang trong handler thi response chua
+// kip ra khoi socket va trinh duyet bao loi mang du lenh da chay dung.
+//
+// 2-3 giay do la 2-3 giay checkSensors() ngung chay, tuc board mu voi the. Chap nhan duoc vi
+// day la thao tac nguoi dung CHU DONG bam (giong nut Test Relay), khong phai thu tu dong chay
+// nen - va no chi xay ra dung mot lan moi lan bam.
+void wifiScanTick()
+{
+    if (!wifiScanRequested)
+        return;
+    wifiScanRequested = false;
+
+    // Dang ghi firmware thi dung dong vao radio.
+    if (otaUrlPending)
+        return;
+
+    // Quet doi hoi STA phai bat. Dang o AP cuu ho (WIFI_AP thuan) thi muon sang AP_STA mot lat
+    // roi tra ve ngay - de nguyen AP_STA se lam AP nhap nhay, xem startAP().
+    bool wasApFallback = apFallbackActive;
+    if (wasApFallback)
+        WiFi.mode(WIFI_AP_STA);
+
+    CredRef list[WIFI_CRED_MAX];
+    size_t n = buildCredList(list, WIFI_CRED_MAX);
+    if (n > 0)
+        filterByScan(list, n);   // tu ghi ket qua vao wifiSeen[] cho dashboard
+
+    if (wasApFallback)
+        WiFi.mode(WIFI_AP);
 }
 
 // Xem globals.h. Goi 1 lan trong setup(); log ra Serial luon de doi chieu duoc voi dashboard
@@ -1090,6 +1141,8 @@ void loop() {
   wifiReconnectTick();
 
   nightlyRebootTick();
+
+  wifiScanTick();
 
   if (diagApActive && (millis() - diagApStartMs) >= DIAG_AP_DURATION_MS)
   {

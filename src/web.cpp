@@ -67,9 +67,10 @@ void handleData()
   // Trang dashboard poll route nay 2 lan/giay VINH VIEN khi co tab mo. Khong reserve() thi
   // moi lan goi la mot chuoi realloc tang dan - dung cai nguy co phan manh heap ma globals.h
   // vien dan de doi config sang char[].
-  // 2048: rieng phan chuoi tinh trong ham nay da ~1.3KB, chua ke SSID/IP/RSSI dong vao.
-  // reserve(1024) khong con du - tuc no dang realloc dung cai viec ma no sinh ra de tranh.
-  data.reserve(2048);
+  // 3072: rieng phan chuoi tinh trong ham nay da ~1.8KB sau khi them bang "Song AP" va dong
+  // gio NTP, chua ke SSID/IP/RSSI dong vao. Moi lan nang them noi dung o day deu phai xem lai
+  // con so nay - de no chat qua thi ham tu realloc, dung cai viec ma no sinh ra de tranh.
+  data.reserve(3072);
 
   // BO dong "Firmware build: __DATE__ __TIME__" (2026-08-10). PlatformIO chi bien dich lai file
   // nao thay doi, ma macro do nam trong web.cpp - lan build nao chi sua main.cpp/html.cpp thi
@@ -101,9 +102,44 @@ void handleData()
     else if (rssi >= -80) { muc = "yếu";      mau = "#b45309"; }
     else                  { muc = "rất yếu";  mau = "#c62828"; }
 
-    data += "<span style='color:#2e7d32;font-weight:bold'>" + String(WiFi.SSID()) + "</span>";
+    // Escape: ten SSID do AP quyet dinh, khong phai ta - mot AP hang xom dat ten chua the
+    // <script> ma in tho ra day thi dashboard tu chay ma do.
+    data += "<span style='color:#2e7d32;font-weight:bold'>" + htmlEscape(WiFi.SSID()) + "</span>";
     data += " &middot; " + WiFi.localIP().toString();
     data += " &middot; <b style='color:" + String(mau) + "'>" + String(rssi) + " dBm (" + muc + ")</b>";
+  }
+  data += "<br>";
+
+  // Bang muc song 3 AP tu lan quet GAN NHAT (khong quet o day - xem globals.h). Liet ke ca AP
+  // khong thay, vi "khong thay" moi la thong tin can nhat khi di do song.
+  data += "<b>Sóng AP:</b> ";
+  if (wifiSeenCount == 0) {
+    data += "<span style='color:#64748b'>chưa quét lần nào</span>";
+  } else {
+    String cur = (WiFi.status() == WL_CONNECTED) ? WiFi.SSID() : String("");
+    for (size_t i = 0; i < wifiSeenCount; i++) {
+      if (i > 0) data += " &nbsp;·&nbsp; ";
+      bool isCur = (cur.length() > 0 && cur == wifiSeen[i].ssid);
+      if (isCur) data += "<b>";
+      data += htmlEscape(wifiSeen[i].ssid);
+      if (isCur) data += "</b>";
+      if (!wifiSeen[i].present) {
+        data += " <span style='color:#c62828'>không thấy</span>";
+      } else {
+        long r = wifiSeen[i].rssi;
+        const char *mau = (r >= -70) ? "#2e7d32" : (r >= -80 ? "#b45309" : "#c62828");
+        data += " <b style='color:" + String(mau) + "'>" + String(r) + "</b>";
+      }
+      if (isCur) data += " <span style='color:#2e7d32;font-size:12px'>(đang dùng)</span>";
+    }
+    // Tuoi cua so lieu: khong co no thi mot bang toan "khong thay" tu luc boot 6 tieng truoc
+    // trong y het mot bang vua do xong.
+    unsigned long ageS = (millis() - wifiSeenAt) / 1000UL;
+    data += " <span style='font-size:12px;color:#64748b'>(đo ";
+    if (ageS < 60) data += String(ageS) + " giây trước)";
+    else if (ageS < 3600) data += String(ageS / 60) + " phút trước)";
+    else data += String(ageS / 3600) + " giờ trước)";
+    data += "</span>";
   }
   data += "<br>";
 
@@ -553,6 +589,17 @@ void handleUpdateUrl() {
   server.send(200, "text/html", page);
 }
 
+// Nut "Quét lại sóng". CHI dat co - wifiScanTick() trong loop() moi thuc su quet, vi
+// scanNetworks() chan 2-3 giay va goi thang o day thi response chua kip ra khoi socket.
+void handleScan() {
+  if (!requireAuth()) return;
+
+  wifiScanRequested = true;
+
+  server.sendHeader("Location", "/");
+  server.send(302, "text/plain", "");
+}
+
 void handleReboot() {
   if (!requireAuth()) return;
   server.send(200, "text/html",
@@ -570,6 +617,7 @@ void setupWeb() {
     server.on("/test_iot", HTTP_POST, handleTestIot);
     server.on("/update", HTTP_POST, handleUpdateFinish, handleUpdateUpload);
     server.on("/update_url", HTTP_POST, handleUpdateUrl);
+    server.on("/scan", HTTP_POST, handleScan);
     server.on("/reboot", HTTP_POST, handleReboot);
 
     // /play va /stop doi trang thai vat ly cua phong (nhac dang chay giua game) nen phai gated
@@ -727,6 +775,6 @@ void loadConfig() {
   prefs.end();
 
   if (strcmp(authUser, "admin") == 0 && strcmp(authPass, "admin") == 0) {
-    LOG("AUTH: dang dung mac dinh admin/admin cho /save, /play, /stop, /test_relay, /test_iot, /update, /reboot - doi qua Web UI");
+    LOG("AUTH: dang dung mac dinh admin/admin cho /save, /play, /stop, /test_relay, /test_iot, /update, /reboot, /scan - doi qua Web UI");
   }
 }

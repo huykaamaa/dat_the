@@ -5,7 +5,7 @@
 // attribute value (ported from phòng Cân Tim) - a bare '"' typed into e.g. WiFi SSID would
 // otherwise break out of the surrounding value='...' attribute. '&' first so it doesn't
 // double-escape the entities produced for the other four characters.
-static String htmlEscape(const String &s)
+String htmlEscape(const String &s)
 {
   String out;
   out.reserve(s.length());
@@ -113,6 +113,8 @@ void handleRoot()
   // this one via form='testForm' so they can sit in the same row as their sensor's checkbox
   // (which belongs to #cfgForm) without illegally nesting one <form> inside another.
   html += "<form id='testForm' action='/test_relay' method='POST'></form>";
+  // Cung ly do: nut "Quét lại sóng" nam trong tab Mang, ma tab do lai nam trong #cfgForm.
+  html += "<form id='scanForm' action='/scan' method='POST'></form>";
 
   html += "<form id='cfgForm' action='/save' method='POST'>";
   html += "<div id='tab-general' class='tab-content active'>";
@@ -206,6 +208,12 @@ void handleRoot()
   // mqtt_pass va auth_pass ben duoi. De trong = giu nguyen (xem saveStringArg trong web.cpp).
   html += "<div class='field'><label>WiFi Password</label><input type='password' name='pass' placeholder='(giữ nguyên nếu để trống)'></div>";
   html += "</div>";
+  html += "<div class='sub'>Mức sóng các AP</div>";
+  html += "<div class='row'>";
+  html += "<button class='btn btn-test' style='width:auto;flex:0 0 150px' type='submit' form='scanForm'>Quét lại sóng</button>";
+  html += "</div>";
+  html += "<div class='note'>Kết quả hiện ở dòng <b>\"Sóng AP\"</b> trên bảng trạng thái đầu trang, kèm thời điểm đo. Bảng đó tự cập nhật mỗi lần board quét - lúc khởi động và mỗi lần thử vào lại mạng - nên số liệu có thể đã cũ; bấm nút này để đo lại ngay.</div>";
+  html += "<div class='note'>Số càng gần 0 càng khỏe: <b>trên -70</b> thoải mái, <b>-70 đến -80</b> yếu, <b>dưới -80</b> bắt đầu rớt gói. Board tự chọn AP khỏe nhất trong 3 cái, bằng điểm thì ưu tiên SSID cấu hình ở trên. <b>Lưu ý:</b> quét chiếm sóng ~2-3 giây, trong lúc đó board không đọc cảm biến - đừng bấm giữa lúc khách đang chơi.</div>";
   html += "<div class='sub'>Tự reboot ban đêm</div>";
   html += "<div class='single'><label><input type='checkbox' name='night_reboot' value='1'";
   html += nightlyRebootEnabled ? " checked" : "";
