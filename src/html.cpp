@@ -206,6 +206,11 @@ void handleRoot()
   // mqtt_pass va auth_pass ben duoi. De trong = giu nguyen (xem saveStringArg trong web.cpp).
   html += "<div class='field'><label>WiFi Password</label><input type='password' name='pass' placeholder='(giữ nguyên nếu để trống)'></div>";
   html += "</div>";
+  html += "<div class='sub'>Tự reset khi mất mạng</div>";
+  html += "<div class='single'><label><input type='checkbox' name='idle_reset' value='1'";
+  html += idleResetEnabled ? " checked" : "";
+  html += "> Mất mạng 10 phút và không có thẻ nào đang đặt thì tự reset</label></div>";
+  html += "<div class='note'>Board vốn đã tự reset sau <b>60 giây</b> mất WiFi, nhưng tối đa <b>3 lần</b> rồi thôi - có trần đó để nó không reset vòng tròn giữa buổi diễn. Ô này là lưới thứ hai cho trường hợp router chết lâu: đợi đủ 10 phút mất mạng, và chỉ reset khi <b>không còn thẻ nào trên bất kỳ vị trí nào</b> (tính cả vị trí không tick Enable), nhạc đã tắt hẳn và đã rảnh liên tục 30 giây. Không giới hạn số lần - cứ 10 phút mất mạng mà đang rảnh thì thử lại một cú. Đang tải firmware OTA hoặc đang có người nối vào diag AP thì hoãn.</div>";
   html += "<div class='sub'>IP tĩnh dự phòng (khi DHCP thất bại)</div>";
   html += "<div class='single'><label><input type='checkbox' name='static_first' value='1'";
   html += staticFirst ? " checked" : "";
