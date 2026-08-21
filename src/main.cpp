@@ -603,7 +603,8 @@ void startAP()
 
     Serial.print("AP IP: ");
     Serial.println(WiFi.softAPIP());
-    Serial.printf("Se thu lai '%s' moi 5 phut (cua so ngan, AP van giu)\r\n", wifiSSID);
+    // Nhip thu lai LUI DAN 1-2-4-5 phut (xem wifiReconnectTick()), khong con co dinh 5 phut.
+    Serial.printf("Se thu lai '%s' theo nhip lui dan (cua so ngan, AP van giu)\r\n", wifiSSID);
 }
 
 // Xem globals.h. Goi 1 lan trong setup(); log ra Serial luon de doi chieu duoc voi dashboard
