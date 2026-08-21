@@ -453,18 +453,22 @@ static size_t buildCredList(CredRef *out, size_t maxOut)
     return n;
 }
 
-// Loc danh sach tren xuong con nhung SSID quet thay. Tra ve so luong con lai; 0 nghia la khong
-// thay cai nao (hoac quet loi) - caller giu nguyen danh sach day du.
-static size_t filterByScan(CredRef *list, size_t n)
+// Loc danh sach tren xuong con nhung SSID quet thay. Tra ve:
+//    > 0  so SSID cua minh dang co mat (list da duoc rut gon, giu thu tu uu tien)
+//    = 0  quet duoc nhung KHONG co cai nao cua minh - AP that su khong co mat
+//    < 0  quet loi hoac khong thay gi ca - khong ket luan duoc, caller nen thu mu
+//
+// KHONG tu dat WiFi.mode() o day: ham nay duoc goi ca luc boot (STA thuan) lan luc dang phat
+// AP cuu ho (AP_STA) - ep mode se giet mat AP. Caller chot mode truoc khi goi.
+static int filterByScan(CredRef *list, size_t n)
 {
-    WiFi.mode(WIFI_STA);
     Serial.print("Quet song... ");
     int found = WiFi.scanNetworks();
     if (found <= 0)
     {
-        Serial.println("khong thay AP nao (hoac quet loi) - thu mu ca danh sach");
+        Serial.println("khong thay gi (hoac quet loi) - khong ket luan duoc");
         WiFi.scanDelete();
-        return 0;
+        return -1;
     }
 
     size_t keep = 0;
@@ -493,7 +497,7 @@ static size_t filterByScan(CredRef *list, size_t n)
     for (size_t i = 0; i < keep; i++)
         Serial.printf(" %s", list[i].ssid);
     Serial.println();
-    return keep;
+    return (int)keep;
 }
 
 // Sets usedStaticFallback so the caller can pick the right diag-AP SSID prefix.
@@ -506,9 +510,10 @@ bool connectWiFi(bool &usedStaticFallback)
     if (n == 0)
         return false;
 
-    size_t scanned = filterByScan(list, n);
+    WiFi.mode(WIFI_STA);
+    int scanned = filterByScan(list, n);
     if (scanned > 0)
-        n = scanned;
+        n = (size_t)scanned;
 
     // "Uu tien IP tinh": dat IP tinh ngay tu dau, bo han 20s cho DHCP. Dung khi mang khong co
     // DHCP server hoac muon chac chan mot IP co dinh. Chi thu tren AP DAU TIEN co mat - bo IP
@@ -856,6 +861,47 @@ static void wifiReconnectTick()
     WiFi.setAutoReconnect(false);
     WiFi.mode(WIFI_AP_STA);
 
+    // Chon SSID cho cu thu nay bang cach QUET, thay vi nen mu wifiSSID.
+    //
+    // Truoc day ca hai duong vao lai (autoReconnect cua core lan cua so nay) deu chi biet dung
+    // mot SSID chinh, nen "doaz chet han ma lamaz con song" la mot ngo cut: danh sach du phong
+    // chi duoc dung trong connectWiFi() luc boot, ma board thi khong con tu reset nua - phai co
+    // nguoi bam Reboot hoac rut dien. Quet o day bit dung cai ngo cut do.
+    //
+    // Quet ton ~2-3 giay va lam AP nhap nhay trong luc do, nhung cua so nay von da chiem 15
+    // giay roi nen khong them gi dang ke. Doi lai: quet ra "khong co AP nao cua minh" thi BO
+    // LUON cu thu - khong ep AP chiu 15 giay AP_STA de goi begin() vao khoang khong.
+    const char *trySsid = wifiSSID;
+    const char *tryPass = wifiPASS;
+
+    CredRef list[1 + sizeof(wifiBackups) / sizeof(wifiBackups[0])];
+    size_t n = buildCredList(list, sizeof(list) / sizeof(list[0]));
+    if (n > 0)
+    {
+        int scanned = filterByScan(list, n);
+        if (scanned > 0)
+        {
+            // list[0] = SSID uu tien cao nhat trong so nhung cai DANG co mat.
+            trySsid = list[0].ssid;
+            tryPass = list[0].pass;
+        }
+        else if (scanned == 0)
+        {
+            // Quet duoc, va chac chan khong co AP nao cua minh - dong cua so lai ngay, tra AP
+            // ve sach va cho nhip sau. scanned < 0 (quet loi) thi khong ket luan gi, cu thu mu.
+            WiFi.mode(WIFI_AP);
+            if (apRetryInterval < WIFI_NUDGE_MS)
+            {
+                apRetryInterval *= 2;
+                if (apRetryInterval > WIFI_NUDGE_MS)
+                    apRetryInterval = WIFI_NUDGE_MS;
+            }
+            Serial.printf("WiFi: khong co AP nao cua minh - bo qua cu thu (thu lai sau %lus)\r\n",
+                          apRetryInterval / 1000UL);
+            return;
+        }
+    }
+
     // Dat cau hinh IP SAU khi da chot mode: doi mode co the xoa cau hinh netif cua STA, dat
     // truoc thi cu huych nay chay voi cau hinh cu. Giu dung lua chon cua operator - co tick "uu
     // tien IP tinh" thi dat lai IP tinh, khong thi xoa cau hinh IP de bat lai DHCP client (neu
@@ -872,8 +918,8 @@ static void wifiReconnectTick()
         WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE);
     }
 
-    Serial.println("WiFi: thu goi lai begin() (khong reset)");
-    WiFi.begin(wifiSSID, wifiPASS);
+    Serial.printf("WiFi: thu goi lai begin() voi '%s' (khong reset)\r\n", trySsid);
+    WiFi.begin(trySsid, tryPass);
     retrying = true;
     retryStart = millis();
 }
